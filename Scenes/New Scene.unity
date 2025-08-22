@@ -1314,7 +1314,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1024954400}
-  - component: {fileID: 1024954401}
+  - component: {fileID: 1024954403}
+  - component: {fileID: 1024954404}
   m_Layer: 0
   m_Name: Stockfish Check
   m_TagString: Untagged
@@ -1336,7 +1337,7 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 6
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1024954401
+--- !u!114 &1024954403
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -1345,16 +1346,32 @@ MonoBehaviour:
   m_GameObject: {fileID: 1024954399}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 23cd2b9def1693243a5b7806f9241a49, type: 3}
+  m_Script: {fileID: 11500000, guid: ce28adba5a72296438a3fe45f202f01d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  testFen: startpos
-  moveTimeMs: 2000
-  testDepth: 5
-  engineElo: 400
-  analyzeButton: {fileID: 732562192}
-  outputText: {fileID: 1498639279}
-  statusText: {fileID: 317956822}
+  stockfishBridge: {fileID: 1024954404}
+  runTestsOnStart: 1
+  delayBetweenTests: 0.1
+  testsRun: 0
+  testsPassed: 0
+  testsFailed: 0
+--- !u!114 &1024954404
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1024954399}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f20a0ffe259f9c4f944d61822df17e9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  defaultTimeoutMs: 20000
+  enableDebugLogging: 1
+  OnEngineLine:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!1 &1101744635
 GameObject:
   m_ObjectHideFlags: 0

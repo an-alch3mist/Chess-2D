@@ -11,11 +11,19 @@ namespace GPTDeepResearch
 	/// </summary>
 	public class StockfishTest : MonoBehaviour
 	{
+
 		[Header("Test Configuration")]
 		[SerializeField] private string testFen = "startpos";
-		[SerializeField] private int moveTimeMs = 2000;
-		[SerializeField] private int testDepth = -1;
-		[SerializeField] private int engineElo = -1;  // -1 = max strength
+		// MODIFY: Change default movetime to shorter for weak play fallback
+		[SerializeField, Tooltip("Used only if searchDepth <= 0. Use 10-50ms for very weak fallback timing.")]
+		private int moveTimeMs = 200;
+		// ADD: Search depth parameter for deterministic weak play
+		[SerializeField, Tooltip("If >0, use 'go depth <N>'; prefer this over movetime for deterministic weak play. Use 1-3 for very weak play.")]
+		private int searchDepth = 1;
+		[SerializeField] private int engineElo = 400;  // -1 = max strength
+													  // ADD: Skill level parameter for additional weakness
+		[SerializeField, Tooltip("Stockfish Skill Level 0-20, where 0 is weakest. Combines with Elo and depth for very weak play.")]
+		private int skillLevel = 0;  // -1 = disabled
 
 		[Header("UI")]
 		[SerializeField] private Button analyzeButton;
@@ -28,6 +36,8 @@ namespace GPTDeepResearch
 
 		void Start()
 		{
+			Debug.Log("Start(): " + this);
+
 			// Get or create StockfishBridge component
 			stockfish = GetComponent<StockfishBridge>();
 			if (stockfish == null)
@@ -92,8 +102,8 @@ namespace GPTDeepResearch
 			UpdateStatus("Running basic analysis test...");
 			Debug.Log("[Test] Starting basic analysis test");
 
-			// Test getting a move from starting position
-			yield return StartCoroutine(stockfish.GetNextMoveCoroutine(testFen, moveTimeMs, testDepth, engineElo));
+			// MODIFY: Pass all weakness parameters to bridge
+			yield return StartCoroutine(stockfish.GetNextMoveCoroutine(testFen, moveTimeMs, searchDepth, engineElo, skillLevel));
 
 			// Display results
 			string result = stockfish.LastRawOutput;
@@ -184,7 +194,8 @@ namespace GPTDeepResearch
 
 			UpdateStatus($"Analyzing position: {fen}");
 
-			yield return StartCoroutine(stockfish.GetNextMoveCoroutine(fen, moveTimeMs));
+			// MODIFY: Pass weakness parameters to bridge
+			yield return StartCoroutine(stockfish.GetNextMoveCoroutine(fen, moveTimeMs, searchDepth, engineElo, skillLevel));
 
 			Debug.Log($"[Test] Custom position analysis:\n{stockfish.LastRawOutput}");
 			UpdateOutput($"Custom Position Results:\n\n{stockfish.LastRawOutput}");
@@ -209,7 +220,8 @@ namespace GPTDeepResearch
 			{
 				UpdateStatus($"Testing {timeMs}ms analysis...");
 
-				yield return StartCoroutine(stockfish.GetNextMoveCoroutine("startpos", timeMs));
+				// MODIFY: Pass weakness parameters to bridge
+				yield return StartCoroutine(stockfish.GetNextMoveCoroutine("startpos", timeMs, searchDepth, engineElo, skillLevel));
 
 				Debug.Log($"[Test] {timeMs}ms analysis completed");
 				yield return new WaitForSeconds(0.5f);  // Brief pause between tests
