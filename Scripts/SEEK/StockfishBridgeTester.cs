@@ -212,6 +212,7 @@ public class StockfishBridgeTester : MonoBehaviour
 	{
 		// King vs King + Queen stalemate position
 		string stalemateFen = "8/8/8/8/8/8/k1K5/1Q6 b - - 0 1";
+		// string stalemateFen = "8/8/8/8/8/8/1RK5/k7 b - - 0 1";
 
 		yield return StartCoroutine(stockfishBridge.AnalyzePositionCoroutine(stalemateFen, depth: 5));
 
