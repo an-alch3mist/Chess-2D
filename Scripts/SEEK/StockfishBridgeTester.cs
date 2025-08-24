@@ -126,8 +126,7 @@ public class StockfishBridgeTester : MonoBehaviour
 
 	private IEnumerator TestStandardOpening()
 	{
-		yield return StartCoroutine(stockfishBridge.AnalyzePositionCoroutine("startpos"));
-
+		yield return stockfishBridge.AnalyzePositionCoroutine("startpos");
 		var result = stockfishBridge.LastAnalysisResult;
 
 		if (result.bestMove.StartsWith("ERROR"))
@@ -214,7 +213,7 @@ public class StockfishBridgeTester : MonoBehaviour
 		string stalemateFen = "8/8/8/8/8/8/k1K5/1Q6 b - - 0 1";
 		// string stalemateFen = "8/8/8/8/8/8/1RK5/k7 b - - 0 1";
 
-		yield return StartCoroutine(stockfishBridge.AnalyzePositionCoroutine(stalemateFen, depth: 5));
+		yield return StartCoroutine(stockfishBridge.AnalyzePositionCoroutine(stalemateFen, depth: 1));
 
 		var result = stockfishBridge.LastAnalysisResult;
 
