@@ -199,6 +199,8 @@ namespace GPTDeepResearch
 			return new ChessMove(); // Invalid move
 		}
 
+
+		[SerializeField] float engineWaitBeforeMove = 0.5f;
 		private IEnumerator MakeEngineMove()
 		{
 			if (!gameActive || waitingForEngine)
@@ -207,6 +209,7 @@ namespace GPTDeepResearch
 			waitingForEngine = true;
 			SetStatusMessage("Engine thinking...");
 
+			yield return new WaitForSeconds(this.engineWaitBeforeMove);
 			// Configure engine settings
 			if (stockfishBridge != null)
 			{
