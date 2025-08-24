@@ -33,7 +33,8 @@ namespace GPTDeepResearch
 		[Header("Engine Settings")]
 		[SerializeField] private StockfishBridge stockfishBridge;
 		[SerializeField] private int engineDepth = 3;
-		[SerializeField] private int engineElo = 1200;
+		[SerializeField] private int engineElo = -1;
+		[SerializeField] private int engineSkill = 0;
 		[SerializeField] private bool humanPlaysWhite = true;
 		[SerializeField] private bool enableEngineEvaluation = true;
 
@@ -219,11 +220,11 @@ namespace GPTDeepResearch
 					engineDepth,
 					enableEngineEvaluation ? engineDepth : -1,
 					engineElo,
-					-1 // No skill level limitation
+					this.engineSkill
 				));
 
 				var result = stockfishBridge.LastAnalysisResult;
-
+				
 				if (!string.IsNullOrEmpty(result.errorMessage))
 				{
 					SetStatusMessage($"Engine error: {result.errorMessage}");
@@ -260,7 +261,7 @@ namespace GPTDeepResearch
 
 						string evalText = enableEngineEvaluation ?
 							$" (Eval: {result.stmEvaluation:P1})" : "";
-						SetStatusMessage($"Engine played: {result.bestMove}{evalText}");
+						SetStatusMessage($"Engine played: {result.bestMove}{evalText}, with approx engine elo: {result.approximateElo}");
 
 						UpdateDisplay();
 						CheckGameState();
@@ -422,6 +423,7 @@ namespace GPTDeepResearch
 			info += $"To Move: {(currentBoard.sideToMove == 'w' ? "White" : "Black")}\n";
 			info += $"Move #{currentBoard.fullmoveNumber}\n";
 			info += $"50-move clock: {currentBoard.halfmoveClock}\n";
+			info += $"{engineElo}";
 
 			if (!string.IsNullOrEmpty(currentBoard.enPassantSquare) && currentBoard.enPassantSquare != "-")
 			{
