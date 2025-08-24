@@ -86,8 +86,8 @@ namespace GPTDeepResearch
 				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKB",  // Too few ranks
 				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR/8 w - - 0 1",  // Too many ranks
 				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNZ w - - 0 1",  // Invalid piece
-				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1",  // No kings (should pass basic but fail king count)
-				"krnbqbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1",  // Two black kings
+				"rnbqqbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQQBNR w - - 0 1",  // No kings (should pass basic but fail king count)
+				"krnkqbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1",  // Two black kings
 				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQQBNR w - - 0 1"   // No white king
 			};
 

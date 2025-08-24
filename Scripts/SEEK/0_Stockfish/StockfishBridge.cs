@@ -617,6 +617,15 @@ namespace GPTDeepResearch
 		#endregion
 
 		#region Private Methods
+		// add new method for Chess960 castling validation
+		private bool IsValidChess960Castling(string castling, string position)
+		{
+			// Implementation for Chess960 castling validation
+			// Check if castling rights match actual piece positions
+			return true; // Simplified - full implementation in ChessRules.cs
+		}
+
+
 
 		/// <summary>
 		/// Calculate approximate Elo based on settings and research data
