@@ -123,6 +123,7 @@ namespace GPTDeepResearch
 
 		private void Awake()
 		{
+			UnityEngine.Debug.Log("Awake(): " + this);
 			StartEngine();
 			StartCoroutine(InitializeEngineOnAwake());
 		}
