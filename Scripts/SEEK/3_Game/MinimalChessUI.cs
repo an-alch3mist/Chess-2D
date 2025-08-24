@@ -200,7 +200,7 @@ namespace GPTDeepResearch
 		}
 
 
-		[SerializeField] float engineWaitBeforeMove = 0.5f;
+		[SerializeField] float engineWaitBeforeMove = 1f;
 		private IEnumerator MakeEngineMove()
 		{
 			if (!gameActive || waitingForEngine)
