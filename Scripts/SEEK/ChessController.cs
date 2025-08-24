@@ -1,41 +1,48 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using GPTDeepResearch;
 
+using SPACE_UTIL;
 
-// Basic setup in your script
-public class ChessController : MonoBehaviour
+namespace GPTDeepResearch
 {
-	[SerializeField] private StockfishBridge bridge;
-
-	void Start()
+	// Basic setup in your script
+	public class ChessController : MonoBehaviour
 	{
-		// Engine starts automatically in Awake()
-		StartCoroutine(AnalyzePosition());
-	}
+		[SerializeField] private StockfishBridge bridge;
 
-	IEnumerator AnalyzePosition()
-	{
-		// Wait for engine to be ready
-		yield return StartCoroutine(bridge.InitializeEngineCoroutine());
+		void Start()
+		{
+			Debug.Log("engine running: " + this.bridge.IsEngineRunning);
+		}
 
-		// Analyze a position (using defaults from inspector)
-		yield return StartCoroutine(bridge.AnalyzePositionCoroutine("startpos"));
+		private void Update()
+		{
+			if (INPUT.M.InstantDown(0))
+			{
+				StopAllCoroutines();
+				StartCoroutine(AnalyzePosition());
+			}
+		}
 
-		// Get results
-		var result = bridge.LastAnalysisResult;
-		Debug.Log($"Best move: {result.bestMove}");
-		Debug.Log($"White win probability: {result.evaluation:F3}");
-		Debug.Log($"Side-to-move probability: {result.stmEvaluation:F3}");
+		IEnumerator AnalyzePosition()
+		{
+			// Use inspector defaults (search: 1, eval: 5)
+			yield return StartCoroutine(bridge.AnalyzePositionCoroutine("startpos"));
 
-		// Custom analysis with specific parameters
-		yield return StartCoroutine(bridge.AnalyzePositionCoroutine(
-			"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-			movetimeMs: 3000,  // 3 second time limit
-			depth: 8,          // Or specific depth
-			elo: 1200,         // Engine strength
-			skillLevel: 5      // Skill level 0-20
-		));
+			// Custom depths
+			yield return bridge.AnalyzePositionCoroutine(
+				fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+			);
+
+			// Check results
+			var result = bridge.LastAnalysisResult;
+
+			LOG.SaveLog(result.ToString());
+
+			Debug.Log($"Best move: {result.bestMove}");
+			Debug.Log($"Search depth: {result.searchDepth}, Eval depth: {result.evaluationDepth}");
+			Debug.Log($"White win probability: {result.evaluation:P1}");
+		}
 	}
 }

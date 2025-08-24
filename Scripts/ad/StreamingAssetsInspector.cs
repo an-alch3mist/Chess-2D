@@ -42,7 +42,7 @@ public class StreamingAssetsInspector : MonoBehaviour
 		LastResult = string.Empty;
 		string path = Application.streamingAssetsPath;
 		Debug.Log($"StreamingAssets path: {path}");
-		Debug.Log($"Platform: {Application.platform}");
+		// Debug.Log($"Platform: {Application.platform}");
 
 		// Standalone / Editor -> we can enumerate the folder directly
 		if (Application.platform == RuntimePlatform.WindowsPlayer ||

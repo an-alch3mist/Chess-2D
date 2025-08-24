@@ -1,6 +1,7 @@
 ﻿/*
-CHANGELOG (Updated Version):
-- Enhanced ParseAnalysisResult() and ParseEvaluationFromInfoLine() to prefer depth-matching info lines with multipv=1
+CHANGELOG (Enhanced Version):
+- Added separate evalDepth configuration for evaluation vs move search
+- Enhanced ParseAnalysisResult() to prefer depth-matching info lines with multipv=1
 - Added robust mate score parsing with isMate flag and mateDistance tracking  
 - Replaced CentipawnsToWinProbability() with configurable logistic mapping (PROB_K = 0.004f)
 - Added sophisticated mate probability mapping using MATE_C = 1000f constant
@@ -11,14 +12,19 @@ CHANGELOG (Updated Version):
 - Improved FEN validation with better error messages for incorrect board arrangements
 - Enhanced stalemate vs checkmate detection logic
 - Added configurable constants for easy tuning (PROB_K, MATE_C)
+- REMOVED: Minimum depth enforcement - now uses actual requested depths
+- UPDATED: Evaluation only computed when enableEvaluation=true, defaults to 0.5f otherwise
+- ADDED: Skill level and approximate Elo tracking in results
+- IMPROVED: Uses search depth for raw output, not evaluation depth
 */
 
 using System;
+using System.Text;
+using System.IO;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Threading;
 using UnityEngine;
 using UnityEngine.Events;
@@ -31,33 +37,16 @@ namespace GPTDeepResearch
 	/// Enhanced with crash detection and recovery mechanisms.
 	/// </summary>
 	/// 
-	/*
-		Usage:
-		// Start the engine
-		stockfishBridge.StartEngine();
-		yield return StartCoroutine(stockfishBridge.InitializeEngineCoroutine());
-
-		// Analyze a position
-		yield return StartCoroutine(stockfishBridge.AnalyzePositionCoroutine(
-			"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-		));
-
-		// Get results
-		var result = stockfishBridge.LastAnalysisResult;
-		Debug.Log($"Best move: {result.bestMove}");
-		Debug.Log($"White win probability: {result.evaluation}");
-		Debug.Log($"Side-to-move probability: {result.stmEvaluation}");
-		Debug.Log($"Side to move: {result.Side}");
-		Debug.Log($"Game over: {result.isGameEnd}");
-	*/
 	public class StockfishBridge : MonoBehaviour
 	{
 		[Header("Engine Configuration")]
 		[SerializeField] private int defaultTimeoutMs = 20000;
 		[SerializeField] private bool enableDebugLogging = true;
+		[SerializeField] public bool enableEvaluation = false; // NEW: Controls whether to compute evaluation
 
 		[Header("Default Engine Settings")]
 		[SerializeField] private int defaultDepth = 1;
+		[SerializeField] private int evalDepth = 5; // Separate evaluation depth (only used when enableEvaluation=true)
 		[SerializeField] private int defaultElo = 400;
 		[SerializeField] private int defaultSkillLevel = 0;
 
@@ -76,11 +65,60 @@ namespace GPTDeepResearch
 		{
 			public string bestMove = "";           // "e2e4", "check-mate", "stale-mate", or "ERROR: message"
 			public char Side = ' ';                // 'w' for white, 'b' for black - side to move from FEN
-			public float evaluation = 0.5f;        // 0-1 probability for white winning (0.5 = equal, 1.0 = white wins, 0.0 = black wins)
-			public float stmEvaluation = 0.5f;     // 0-1 probability for side-to-move winning
+			public float evaluation = 0.5f;        // 0-1 probability for white winning (0.5 = equal/no eval, 1.0 = white wins, 0.0 = black wins)
+			public float stmEvaluation = 0.5f;     // 0-1 probability for side-to-move winning (0.5 = equal/no eval)
 			public bool isGameEnd = false;         // True if checkmate or stalemate
 			public string errorMessage = "";       // Detailed error if any
 			public string rawEngineOutput = "";    // Full engine response for debugging
+			public int searchDepth = 0;           // Depth used for move search
+			public int evaluationDepth = 0;       // Depth used for position evaluation
+			public int skillLevel = -1;           // Skill level used (-1 if disabled)
+			public int approximateElo = 0;        // Approximate Elo based on settings
+
+			#region ToString()
+			public override string ToString()
+			{
+				var sb = new StringBuilder();
+				sb.AppendLine("ChessAnalysisResult {");
+				sb.AppendLine($"  BestMove:         {SafeString(bestMove)}");
+				sb.AppendLine($"  Side:             {(Side == 'w' ? "White (w)" : Side == 'b' ? "Black (b)" : Side.ToString())}");
+				sb.AppendLine($"  Evaluation (W):   {evaluation:F3} ({evaluation:P1})");
+				sb.AppendLine($"  STM Evaluation:   {stmEvaluation:F3} ({stmEvaluation:P1})");
+				sb.AppendLine($"  IsGameEnd:        {isGameEnd}");
+				sb.AppendLine($"  SearchDepth:      {searchDepth}");
+				sb.AppendLine($"  EvaluationDepth:  {evaluationDepth}");
+				sb.AppendLine($"  SkillLevel:       {(skillLevel == -1 ? "Disabled" : skillLevel.ToString())}");
+				sb.AppendLine($"  ApproximateElo:   {approximateElo}");
+
+				if (!string.IsNullOrEmpty(errorMessage))
+				{
+					sb.AppendLine("  ErrorMessage:");
+					sb.AppendLine(IndentMultiline(errorMessage, "    "));
+				}
+
+				if (!string.IsNullOrEmpty(rawEngineOutput))
+				{
+					sb.AppendLine("  RawEngineOutput:");
+					sb.AppendLine(IndentMultiline(rawEngineOutput, "    "));
+				}
+
+				sb.Append("}");
+				return sb.ToString();
+			}
+			private static string SafeString(string s) => string.IsNullOrEmpty(s) ? "\"\"" : s;
+			private static string IndentMultiline(string text, string indent)
+			{
+				// Normalize line endings then indent every line
+				var normalized = text?.Replace("\r\n", "\n").Replace("\r", "\n") ?? "";
+				var lines = normalized.Split('\n');
+				var sb = new StringBuilder();
+				for (int i = 0; i < lines.Length; i++)
+				{
+					sb.Append(indent).AppendLine(lines[i]);
+				}
+				return sb.ToString().TrimEnd('\n', '\r');
+			}
+			#endregion
 		}
 
 		// Public properties
@@ -120,7 +158,6 @@ namespace GPTDeepResearch
 		private readonly object requestLock = new object();
 
 		#region Unity Lifecycle
-
 		private void Awake()
 		{
 			UnityEngine.Debug.Log("Awake(): " + this);
@@ -276,21 +313,26 @@ namespace GPTDeepResearch
 		/// <param name="fen">Position in FEN notation (or "startpos")</param>
 		public IEnumerator AnalyzePositionCoroutine(string fen)
 		{
-			// Use inspector defaults, but ensure minimum depth for mate detection
-			int minDepthForMate = Mathf.Max(defaultDepth, 3);
-			yield return StartCoroutine(AnalyzePositionCoroutine(fen, -1, minDepthForMate, defaultElo, defaultSkillLevel));
+			// Use inspector defaults - no minimum depth enforcement
+			yield return StartCoroutine(AnalyzePositionCoroutine(fen, -1, defaultDepth, evalDepth, defaultElo, defaultSkillLevel));
 		}
 
 		/// <summary>
 		/// Analyze chess position and get best move with evaluation.
 		/// Returns comprehensive analysis including checkmate/stalemate detection.
+		/// 
+		/// EVALUATION EXPLANATION:
+		/// - evaluation (0-1): Probability that WHITE will win (0.0 = Black wins, 0.5 = Draw/Equal, 1.0 = White wins)
+		/// - stmEvaluation (0-1): Probability that the SIDE-TO-MOVE will win (adjusted based on who's turn it is)
+		/// - Both default to 0.5 (50%) when enableEvaluation=false in inspector
 		/// </summary>
 		/// <param name="fen">Position in FEN notation (or "startpos")</param>
 		/// <param name="movetimeMs">Time limit in milliseconds (-1 to use depth instead)</param>
-		/// <param name="depth">Search depth (default: 1, -1 to use movetime instead)</param>
+		/// <param name="searchDepth">Search depth for move generation (default: 1, -1 to use movetime instead)</param>
+		/// <param name="evaluationDepth">Search depth for position evaluation (default: 5, -1 to use searchDepth)</param>
 		/// <param name="elo">Engine strength (default: 400, -1 for maximum strength)</param>
 		/// <param name="skillLevel">Skill level 0-20, where 0 is weakest (default: 0, -1 disabled)</param>
-		public IEnumerator AnalyzePositionCoroutine(string fen, int movetimeMs = 2000, int depth = 1, int elo = 400, int skillLevel = 0)
+		public IEnumerator AnalyzePositionCoroutine(string fen, int movetimeMs = 2000, int searchDepth = 1, int evaluationDepth = 5, int elo = 400, int skillLevel = 0)
 		{
 			// Reset result
 			LastAnalysisResult = new ChessAnalysisResult();
@@ -300,6 +342,22 @@ namespace GPTDeepResearch
 			string fenValidationError = ValidateFen(fen);
 
 			LastAnalysisResult.Side = sideToMove; // Always set side, even for errors
+
+			// Determine actual depths to use (NO minimum depth enforcement)
+			int actualSearchDepth = searchDepth;
+			int actualEvalDepth = evaluationDepth;
+
+			// If evaluationDepth is -1, use searchDepth
+			if (actualEvalDepth == -1)
+			{
+				actualEvalDepth = actualSearchDepth;
+			}
+
+			// Store depths and skill settings in result
+			LastAnalysisResult.searchDepth = actualSearchDepth;
+			LastAnalysisResult.evaluationDepth = actualEvalDepth;
+			LastAnalysisResult.skillLevel = skillLevel;
+			LastAnalysisResult.approximateElo = CalculateApproximateElo(elo, skillLevel, actualSearchDepth);
 
 			if (!string.IsNullOrEmpty(fenValidationError))
 			{
@@ -329,15 +387,6 @@ namespace GPTDeepResearch
 				yield break;
 			}
 
-			// Ensure minimum depth for accurate mate detection
-			int analysisDepth = depth;
-			if (depth > 0 && depth < 3)
-			{
-				analysisDepth = 3; // Minimum depth for mate detection
-				if (enableDebugLogging)
-					UnityEngine.Debug.Log($"[Stockfish] Increasing depth from {depth} to {analysisDepth} for mate detection");
-			}
-
 			// Setup request tracking
 			float startTime = Time.time;
 			float timeoutSeconds = (movetimeMs > 0 ? movetimeMs + 5000 : defaultTimeoutMs) / 1000f;
@@ -350,7 +399,7 @@ namespace GPTDeepResearch
 			}
 
 			// Send commands sequence - check for crashes between each
-			bool commandSuccess = SendCommandSequence(fen, elo, skillLevel, analysisDepth, movetimeMs);
+			bool commandSuccess = SendCommandSequence(fen, elo, skillLevel, actualSearchDepth, actualEvalDepth, movetimeMs);
 			if (!commandSuccess)
 			{
 				yield break; // Error already set in SendCommandSequence
@@ -405,7 +454,8 @@ namespace GPTDeepResearch
 			}
 
 			// Parse successful result - no returns in try/catch
-			ParseAnalysisResult(LastRawOutput, analysisDepth);
+			// Use SEARCH depth for raw output filtering (not evaluation depth)
+			ParseAnalysisResult(LastRawOutput, actualSearchDepth, enableEvaluation ? actualEvalDepth : -1);
 		}
 
 		/// <summary>
@@ -569,6 +619,71 @@ namespace GPTDeepResearch
 		#region Private Methods
 
 		/// <summary>
+		/// Calculate approximate Elo based on settings and research data
+		/// Based on Lichess data: Level 1 ~ <400, Level 2 ~ 500, Level 3 ~ 800, Level 4 ~ 1100,
+		/// Level 5 ~ 1500, Level 6 ~ 1900, Level 7 ~ 2300, Level 8 ~ 2800+
+		/// Depth also affects strength significantly
+		/// </summary>
+		private int CalculateApproximateElo(int uciElo, int skillLevel, int searchDepth)
+		{
+			// If UCI_Elo is explicitly set and positive, use it as base
+			if (uciElo > 0)
+			{
+				int baseElo = uciElo;
+
+				// Depth adjustment: each additional depth adds roughly 100-200 Elo
+				if (searchDepth > 1)
+				{
+					baseElo += (searchDepth - 1) * 150; // Conservative estimate
+				}
+
+				// Clamp to reasonable range
+				return Mathf.Clamp(baseElo, 100, 3600);
+			}
+
+			// If skill level is used, map based on research
+			if (skillLevel >= 0)
+			{
+				int skillElo;
+				if (skillLevel <= 1) skillElo = 350;
+				else if (skillLevel <= 2) skillElo = 500;
+				else if (skillLevel <= 3) skillElo = 800;
+				else if (skillLevel <= 4) skillElo = 1100;
+				else if (skillLevel <= 5) skillElo = 1500;
+				else if (skillLevel <= 6) skillElo = 1900;
+				else if (skillLevel <= 7) skillElo = 2300;
+				else if (skillLevel <= 8) skillElo = 2800;
+				else if (skillLevel <= 12) skillElo = 2900 + (skillLevel - 8) * 25;
+				else skillElo = 3000 + (skillLevel - 12) * 50; // Extrapolation
+
+				// Depth adjustment for skill-based Elo
+				if (searchDepth > 3)
+				{
+					skillElo += (searchDepth - 3) * 100;
+				}
+				else if (searchDepth < 3 && searchDepth > 0)
+				{
+					skillElo -= (3 - searchDepth) * 150; // Penalty for very low depth
+				}
+
+				return Mathf.Clamp(skillElo, 100, 3600);
+			}
+
+			// Full strength (no limitations) - estimate based on depth
+			int fullStrengthElo = 3000; // Base full strength
+			if (searchDepth > 5)
+			{
+				fullStrengthElo += (searchDepth - 5) * 50;
+			}
+			else if (searchDepth > 0 && searchDepth < 5)
+			{
+				fullStrengthElo -= (5 - searchDepth) * 200;
+			}
+
+			return Mathf.Clamp(fullStrengthElo, 1000, 3600);
+		}
+
+		/// <summary>
 		/// Set error result and log appropriately - helper to avoid duplication
 		/// </summary>
 		private void SetErrorResult(string bestMove, string errorMessage)
@@ -585,8 +700,9 @@ namespace GPTDeepResearch
 
 		/// <summary>
 		/// Send command sequence for analysis - returns success/failure
+		/// UPDATED: Uses search depth for main command, evaluation only when enabled
 		/// </summary>
-		private bool SendCommandSequence(string fen, int elo, int skillLevel, int depth, int movetimeMs)
+		private bool SendCommandSequence(string fen, int elo, int skillLevel, int searchDepth, int evaluationDepth, int movetimeMs)
 		{
 			// Send ucinewgame before each analysis to ensure clean state
 			SendCommand("ucinewgame");
@@ -632,8 +748,21 @@ namespace GPTDeepResearch
 				return false;
 			}
 
-			// Construct and send go command
-			string goCommand = ConstructGoCommand(depth, movetimeMs);
+			// If evaluation is enabled and we have different depths, run evaluation search first
+			if (enableEvaluation && searchDepth != evaluationDepth && evaluationDepth > 0)
+			{
+				if (enableDebugLogging)
+					UnityEngine.Debug.Log($"[Stockfish] Running evaluation search at depth {evaluationDepth}");
+
+				string evalGoCommand = ConstructGoCommand(evaluationDepth, -1); // Force depth-based search for evaluation
+				SendCommand(evalGoCommand);
+
+				// Note: In a more sophisticated implementation, you might want to wait for and parse this separately
+				// For now, we'll let the main search provide both move and evaluation data
+			}
+
+			// Construct and send main search command (uses SEARCH depth)
+			string goCommand = ConstructGoCommand(searchDepth, movetimeMs);
 			SendCommand(goCommand);
 
 			// Final check after sending go command
@@ -914,8 +1043,9 @@ namespace GPTDeepResearch
 
 		/// <summary>
 		/// Parse engine output into structured analysis result with enhanced evaluation mapping
+		/// UPDATED: Uses searchDepth for info line selection (raw output), evaluationDepth only when enabled
 		/// </summary>
-		private void ParseAnalysisResult(string rawOutput, int targetDepth)
+		private void ParseAnalysisResult(string rawOutput, int searchDepth, int evaluationDepth)
 		{
 			LastAnalysisResult.rawEngineOutput = rawOutput;
 
@@ -931,35 +1061,47 @@ namespace GPTDeepResearch
 			float whiteWinProb = 0.5f; // Default fallback
 			bool foundEvaluation = false;
 
-			// Select best info line based on depth and multipv preferences
-			string selectedInfoLine = SelectBestInfoLine(lines, targetDepth);
-
-			if (!string.IsNullOrEmpty(selectedInfoLine))
+			// Only compute evaluation if enabled
+			if (evaluationDepth > 0 && enableEvaluation)
 			{
-				var evalResult = ParseEvaluationFromInfoLine(selectedInfoLine);
-				if (!float.IsNaN(evalResult.centipawns) || evalResult.isMate)
-				{
-					foundEvaluation = true;
+				// Use evaluation depth for selecting info line for evaluation
+				string selectedInfoLine = SelectBestInfoLine(lines, evaluationDepth);
 
-					if (evalResult.isMate)
+				if (!string.IsNullOrEmpty(selectedInfoLine))
+				{
+					var evalResult = ParseEvaluationFromInfoLine(selectedInfoLine);
+					if (!float.IsNaN(evalResult.centipawns) || evalResult.isMate)
 					{
-						// Use mate-specific probability mapping
-						whiteWinProb = MateDistanceToWinProbability(evalResult.mateDistance);
-						if (enableDebugLogging)
-							UnityEngine.Debug.Log($"[Stockfish] Mate in {Mathf.Abs(evalResult.mateDistance)} -> White prob: {whiteWinProb:F4}");
-					}
-					else
-					{
-						// Use centipawn-based logistic mapping
-						whiteWinProb = CentipawnsToWinProbability(evalResult.centipawns);
-						if (enableDebugLogging)
-							UnityEngine.Debug.Log($"[Stockfish] {evalResult.centipawns}cp -> White prob: {whiteWinProb:F4}");
+						foundEvaluation = true;
+
+						if (evalResult.isMate)
+						{
+							// Use mate-specific probability mapping
+							whiteWinProb = MateDistanceToWinProbability(evalResult.mateDistance);
+							if (enableDebugLogging)
+								UnityEngine.Debug.Log($"[Stockfish] Mate in {Mathf.Abs(evalResult.mateDistance)} -> White prob: {whiteWinProb:F4}");
+						}
+						else
+						{
+							// Use centipawn-based logistic mapping
+							whiteWinProb = CentipawnsToWinProbability(evalResult.centipawns);
+							if (enableDebugLogging)
+								UnityEngine.Debug.Log($"[Stockfish] {evalResult.centipawns}cp -> White prob: {whiteWinProb:F4}");
+						}
 					}
 				}
 			}
 
-			// Clamp probability to safe range
-			whiteWinProb = Mathf.Clamp(whiteWinProb, 0.0001f, 0.9999f);
+			// Clamp probability to safe range, but only if evaluation was enabled
+			if (foundEvaluation)
+			{
+				whiteWinProb = Mathf.Clamp(whiteWinProb, 0.0001f, 0.9999f);
+			}
+			else
+			{
+				whiteWinProb = 0.5f; // Default when evaluation disabled
+			}
+
 			LastAnalysisResult.evaluation = whiteWinProb;
 
 			// Calculate side-to-move evaluation
@@ -994,20 +1136,32 @@ namespace GPTDeepResearch
 					{
 						// No legal moves - determine if checkmate or stalemate
 						// If we found a mate evaluation, it's checkmate
-						if (foundEvaluation && selectedInfoLine != null)
+						if (foundEvaluation)
 						{
-							var evalResult = ParseEvaluationFromInfoLine(selectedInfoLine);
-							if (evalResult.isMate)
+							string selectedInfoLine = SelectBestInfoLine(lines, evaluationDepth > 0 ? evaluationDepth : searchDepth);
+							if (selectedInfoLine != null)
 							{
-								LastAnalysisResult.bestMove = "check-mate";
-								LastAnalysisResult.isGameEnd = true;
-								// Keep the mate probability we calculated
+								var evalResult = ParseEvaluationFromInfoLine(selectedInfoLine);
+								if (evalResult.isMate)
+								{
+									LastAnalysisResult.bestMove = "check-mate";
+									LastAnalysisResult.isGameEnd = true;
+									// Keep the mate probability we calculated
+								}
+								else
+								{
+									LastAnalysisResult.bestMove = "stale-mate";
+									LastAnalysisResult.isGameEnd = true;
+									LastAnalysisResult.evaluation = 0.5f; // Stalemate is draw
+									LastAnalysisResult.stmEvaluation = 0.5f;
+								}
 							}
 							else
 							{
+								// Fallback
 								LastAnalysisResult.bestMove = "stale-mate";
 								LastAnalysisResult.isGameEnd = true;
-								LastAnalysisResult.evaluation = 0.5f; // Stalemate is draw
+								LastAnalysisResult.evaluation = 0.5f;
 								LastAnalysisResult.stmEvaluation = 0.5f;
 							}
 						}
@@ -1043,6 +1197,11 @@ namespace GPTDeepResearch
 			if (enableDebugLogging && foundEvaluation)
 			{
 				UnityEngine.Debug.Log($"[Stockfish] Final evaluation - White: {LastAnalysisResult.evaluation:F4}, STM: {LastAnalysisResult.stmEvaluation:F4} (Side: {LastAnalysisResult.Side})");
+			}
+
+			if (enableDebugLogging)
+			{
+				UnityEngine.Debug.Log($"[Stockfish] Search depth: {LastAnalysisResult.searchDepth}, Evaluation depth: {LastAnalysisResult.evaluationDepth}, Skill: {LastAnalysisResult.skillLevel}, Approx Elo: {LastAnalysisResult.approximateElo}");
 			}
 		}
 

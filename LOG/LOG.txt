@@ -1,0 +1,63 @@
+ChessAnalysisResult {
+  BestMove:         e2e3
+  Side:             White (w)
+  Evaluation (W):   0.500 (50.0 %)
+  STM Evaluation:   0.500 (50.0 %)
+  IsGameEnd:        False
+  SearchDepth:      3
+  EvaluationDepth:  3
+  SkillLevel:       0
+  ApproximateElo:   700
+  RawEngineOutput:
+    info string Available processors: 0-7
+    info string Using 1 thread
+    info string NNUE evaluation using nn-1c0000000000.nnue (133MiB, (22528, 3072, 15, 32, 1))
+    info string NNUE evaluation using nn-37f18f62d772.nnue (6MiB, (22528, 128, 15, 32, 1))
+    info depth 1 seldepth 2 multipv 1 score cp 17 nodes 109 nps 109000 hashfull 0 tbhits 0 time 1 pv e2e4
+    info depth 2 seldepth 3 multipv 1 score cp 34 nodes 201 nps 201000 hashfull 0 tbhits 0 time 1 pv e2e4
+    info depth 3 seldepth 4 multipv 1 score cp 44 nodes 359 nps 359000 hashfull 0 tbhits 0 time 1 pv e2e4
+    bestmove e2e3 ponder d7d5
+}
+
+ChessAnalysisResult {
+  BestMove:         e2e4
+  Side:             White (w)
+  Evaluation (W):   0.500 (50.0 %)
+  STM Evaluation:   0.500 (50.0 %)
+  IsGameEnd:        False
+  SearchDepth:      5
+  EvaluationDepth:  10
+  SkillLevel:       0
+  ApproximateElo:   1000
+  RawEngineOutput:
+    info string Available processors: 0-7
+    info string Using 1 thread
+    info string NNUE evaluation using nn-1c0000000000.nnue (133MiB, (22528, 3072, 15, 32, 1))
+    info string NNUE evaluation using nn-37f18f62d772.nnue (6MiB, (22528, 128, 15, 32, 1))
+    info depth 1 seldepth 2 multipv 1 score cp 17 nodes 109 nps 109000 hashfull 0 tbhits 0 time 1 pv e2e4
+    info depth 2 seldepth 3 multipv 1 score cp 34 nodes 201 nps 201000 hashfull 0 tbhits 0 time 1 pv e2e4
+    info depth 3 seldepth 4 multipv 1 score cp 44 nodes 359 nps 359000 hashfull 0 tbhits 0 time 1 pv e2e4
+    info depth 4 seldepth 5 multipv 1 score cp 75 nodes 886 nps 443000 hashfull 0 tbhits 0 time 2 pv d2d4
+    info depth 5 seldepth 8 multipv 1 score cp 59 nodes 2690 nps 538000 hashfull 0 tbhits 0 time 5 pv d2d4 d7d5 c2c4 d5c4
+    bestmove e2e4 ponder e7e5
+}
+
+ChessAnalysisResult {
+  BestMove:         e2e4
+  Side:             White (w)
+  Evaluation (W):   0.500 (50.0 %)
+  STM Evaluation:   0.500 (50.0 %)
+  IsGameEnd:        False
+  SearchDepth:      1
+  EvaluationDepth:  10
+  SkillLevel:       0
+  ApproximateElo:   400
+  RawEngineOutput:
+    info string Available processors: 0-7
+    info string Using 1 thread
+    info string NNUE evaluation using nn-1c0000000000.nnue (133MiB, (22528, 3072, 15, 32, 1))
+    info string NNUE evaluation using nn-37f18f62d772.nnue (6MiB, (22528, 128, 15, 32, 1))
+    info depth 1 seldepth 2 multipv 1 score cp 17 nodes 109 nps 109000 hashfull 0 tbhits 0 time 1 pv e2e4
+    bestmove e2e4
+}
+
