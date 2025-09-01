@@ -1,41 +1,10 @@
 ﻿/*
-PromotionUI.cs - Enhanced Pawn Promotion Selection Interface
-===========================================================
-
-USAGE:
-1. Create Canvas with PromotionUI prefab
-2. Assign piece sprite references and TMP text components in inspector
-3. Call ShowPromotionDialog() when pawn reaches last rank
-4. Handle OnPromotionSelected event to get chosen piece
-5. Default queen selection after configurable timeout
-
-INSPECTOR SETUP:
-- promotionPanel: UI Panel containing the promotion interface
-- promotionTitle: TMP_Text showing "Choose Promotion Piece"
-- queenButton, rookButton, bishopButton, knightButton: UI Buttons
-- queenSprite, rookSprite, bishopSprite, knightSprite: Piece sprites
-- autoSelectTimeoutSeconds: Time before auto-selecting queen (default: 3.0f)
-- showCountdown: Whether to display countdown timer
-
-INTEGRATION EXAMPLE:
-```csharp
-// Subscribe to promotion event
-promotionUI.OnPromotionSelected.AddListener(OnPromotionPieceSelected);
-
-// Show dialog when pawn reaches last rank
-if (ChessMove.RequiresPromotion(from, to, piece))
-{
-    promotionUI.ShowPromotionDialog(isWhitePawn);
-}
-
-// Handle selection
-private void OnPromotionPieceSelected(char promotionPiece)
-{
-    // Apply promotion move with selected piece
-    ChessMove promotionMove = new ChessMove(from, to, pawn, promotionPiece, capturedPiece);
-    ApplyMove(promotionMove);
-}
-```
+PROMOTION UI SYSTEM
+- Modal popup for pawn promotion selection
+- Configurable timeout with queen fallback
+- Inspector-friendly setup with UnityEvents
+- Supports both human and engine promotion moves
+- Thread-safe UI updates for engine promotions
 */
 
 using System;
@@ -44,108 +13,70 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
 using TMPro;
-// ~ 17,000 chars
+
 namespace GPTDeepResearch
 {
 	/// <summary>
-	/// Enhanced UI controller for pawn promotion selection with timeout and visual feedback
+	/// Handles pawn promotion UI with timeout and fallback.
+	/// Shows modal when human pawn reaches last rank.
 	/// </summary>
 	public class PromotionUI : MonoBehaviour
 	{
-		[Header("UI Panel References")]
+		[Header("UI References")]
 		[SerializeField] private GameObject promotionPanel;
-		[SerializeField] private TMP_Text promotionTitle;
-		[SerializeField] private TMP_Text countdownText;
-		[SerializeField] private Image backgroundOverlay;
-
-		[Header("Promotion Buttons")]
 		[SerializeField] private Button queenButton;
 		[SerializeField] private Button rookButton;
 		[SerializeField] private Button bishopButton;
 		[SerializeField] private Button knightButton;
+		[SerializeField] private Button cancelButton;
+		[SerializeField] private TextMeshProUGUI titleText;
+		[SerializeField] private TextMeshProUGUI timerText;
+		[SerializeField] private Image backgroundOverlay;
 
-		[Header("White Piece Sprites")]
-		[SerializeField] private Sprite whiteQueenSprite;
-		[SerializeField] private Sprite whiteRookSprite;
-		[SerializeField] private Sprite whiteBishopSprite;
-		[SerializeField] private Sprite whiteKnightSprite;
-
-		[Header("Black Piece Sprites")]
-		[SerializeField] private Sprite blackQueenSprite;
-		[SerializeField] private Sprite blackRookSprite;
-		[SerializeField] private Sprite blackBishopSprite;
-		[SerializeField] private Sprite blackKnightSprite;
-
-		[Header("Configuration")]
-		[SerializeField] private float autoSelectTimeoutSeconds = 3.0f;
-		[SerializeField] private bool enableAutoSelect = true;
-		[SerializeField] private bool showCountdown = true;
+		[Header("Settings")]
+		[SerializeField] private float timeoutSeconds = 3f;
 		[SerializeField] private char defaultPromotionPiece = 'Q';
-		[SerializeField] private bool pauseGameDuringSelection = true;
+		[SerializeField] private bool allowCancel = false;
+		[SerializeField] private bool showTimer = true;
 
-		[Header("Visual Effects")]
-		[SerializeField] private float buttonHoverScale = 1.1f;
-		[SerializeField] private float buttonPressScale = 0.95f;
-		[SerializeField] private Color selectedButtonColor = Color.green;
-		[SerializeField] private Color defaultButtonColor = Color.white;
+		[Header("Events")]
+		public UnityEvent<char> OnPromotionSelected;
+		public UnityEvent OnPromotionCancelled;
+		public UnityEvent<float> OnTimerUpdate;
 
-		// Events
-		[System.Serializable]
-		public class PromotionSelectedEvent : UnityEvent<char> { }
-		public PromotionSelectedEvent OnPromotionSelected = new PromotionSelectedEvent();
-
-		[System.Serializable]
-		public class PromotionCancelledEvent : UnityEvent { }
-		public PromotionCancelledEvent OnPromotionCancelled = new PromotionCancelledEvent();
-
-		// State
-		private bool isVisible = false;
-		private bool isWhitePromotion = true;
-		private float timeRemaining = 0f;
-		private Coroutine autoSelectCoroutine;
-		private Coroutine countdownCoroutine;
-
-		// Button references for effects
-		private Button[] allButtons;
-		private Vector3[] originalButtonScales;
-		private Color[] originalButtonColors;
+		// Internal state
+		private char pendingPromotionPiece = '\0';
+		private bool isWaitingForSelection = false;
+		private bool selectionMade = false;
+		private Coroutine timeoutCoroutine;
+		private ChessMove pendingMove;
 
 		#region Unity Lifecycle
 
 		private void Awake()
 		{
-			// Initialize button arrays
-			allButtons = new Button[] { queenButton, rookButton, bishopButton, knightButton };
-			originalButtonScales = new Vector3[allButtons.Length];
-			originalButtonColors = new Color[allButtons.Length];
+			// Setup button listeners
+			if (queenButton) queenButton.onClick.AddListener(() => SelectPromotion('Q'));
+			if (rookButton) rookButton.onClick.AddListener(() => SelectPromotion('R'));
+			if (bishopButton) bishopButton.onClick.AddListener(() => SelectPromotion('B'));
+			if (knightButton) knightButton.onClick.AddListener(() => SelectPromotion('N'));
+			if (cancelButton) cancelButton.onClick.AddListener(CancelPromotion);
 
-			// Store original scales and colors
-			for (int i = 0; i < allButtons.Length; i++)
-			{
-				if (allButtons[i] != null)
-				{
-					originalButtonScales[i] = allButtons[i].transform.localScale;
-					Image buttonImage = allButtons[i].GetComponent<Image>();
-					originalButtonColors[i] = buttonImage != null ? buttonImage.color : Color.white;
-				}
-			}
+			// Setup initial state
+			if (promotionPanel) promotionPanel.SetActive(false);
+			if (cancelButton) cancelButton.gameObject.SetActive(allowCancel);
 
-			// Initialize UI state
-			if (promotionPanel != null)
-				promotionPanel.SetActive(false);
-
-			// Setup button listeners and effects
-			SetupButtonListeners();
-			SetupButtonEffects();
-
-			// Validate configuration
-			ValidateConfiguration();
+			ValidateSetup();
 		}
 
-		private void Start()
+		private void OnDestroy()
 		{
-			// Ensure panel is hidden on start
-			HidePromotionDialog();
+			// Cleanup button listeners
+			if (queenButton) queenButton.onClick.RemoveAllListeners();
+			if (rookButton) rookButton.onClick.RemoveAllListeners();
+			if (bishopButton) bishopButton.onClick.RemoveAllListeners();
+			if (knightButton) knightButton.onClick.RemoveAllListeners();
+			if (cancelButton) cancelButton.onClick.RemoveAllListeners();
 		}
 
 		#endregion
@@ -153,521 +84,134 @@ namespace GPTDeepResearch
 		#region Public API
 
 		/// <summary>
-		/// Show promotion selection dialog for given side
+		/// Show promotion UI for human move. Returns selected piece via callback.
 		/// </summary>
-		/// <param name="isWhite">True for white pawn promotion, false for black</param>
-		/// <param name="fromSquare">Source square for context (optional)</param>
-		/// <param name="toSquare">Target square for context (optional)</param>
-		public void ShowPromotionDialog(bool isWhite, string fromSquare = "", string toSquare = "")
+		public void ShowPromotionUI(ChessMove move, char sideColor, Action<char> onComplete)
 		{
-			if (isVisible)
+			if (isWaitingForSelection)
 			{
-				UnityEngine.Debug.Log("<color=yellow>[PromotionUI] Dialog already visible</color>");
+				Debug.Log("<color=yellow>[PromotionUI] Already waiting for promotion selection</color>");
 				return;
 			}
 
-			isWhitePromotion = isWhite;
-			isVisible = true;
-			timeRemaining = autoSelectTimeoutSeconds;
+			pendingMove = move;
+			pendingPromotionPiece = '\0';
+			selectionMade = false;
+			isWaitingForSelection = true;
 
-			// Update UI elements
-			UpdatePromotionTitle(isWhite, fromSquare, toSquare);
-			UpdateButtonSprites(isWhite);
-			ResetButtonStates();
+			// Setup UI
+			UpdateUIForSide(sideColor);
+			ShowPanel();
 
-			// Show panel
-			if (promotionPanel != null)
+			// Start timeout coroutine
+			if (timeoutSeconds > 0)
 			{
-				promotionPanel.SetActive(true);
+				timeoutCoroutine = StartCoroutine(TimeoutCoroutine(onComplete));
 			}
 
-			// Pause game if configured
-			if (pauseGameDuringSelection)
-			{
-				Time.timeScale = 0f;
-			}
-
-			// Start timers
-			if (enableAutoSelect && autoSelectTimeoutSeconds > 0f)
-			{
-				autoSelectCoroutine = StartCoroutine(AutoSelectCoroutine());
-			}
-
-			if (showCountdown && countdownText != null)
-			{
-				countdownCoroutine = StartCoroutine(CountdownCoroutine());
-			}
-
-			UnityEngine.Debug.Log($"<color=green>[PromotionUI] Showing dialog for {(isWhite ? "White" : "Black")} promotion</color>");
+			// Store callback for button selection
+			var tempEvent = OnPromotionSelected;
+			OnPromotionSelected.RemoveAllListeners();
+			OnPromotionSelected.AddListener((piece) => {
+				OnPromotionSelected = tempEvent;
+				onComplete?.Invoke(piece);
+			});
 		}
 
 		/// <summary>
-		/// Hide promotion dialog and restore game state
+		/// Handle engine promotion move (no UI needed)
 		/// </summary>
-		public void HidePromotionDialog()
+		public void HandleEnginePromotion(ChessMove move)
 		{
-			if (!isVisible) return;
+			char promotionPiece = move.promotionPiece;
+			Debug.Log($"<color=green>[PromotionUI] Engine promotes to {GetPieceName(promotionPiece)}: {move.ToUCI()}</color>");
 
-			isVisible = false;
-
-			// Stop all coroutines
-			StopAllPromotionCoroutines();
-
-			// Restore game time
-			if (pauseGameDuringSelection)
-			{
-				Time.timeScale = 1f;
-			}
-
-			// Hide panel
-			if (promotionPanel != null)
-			{
-				promotionPanel.SetActive(false);
-			}
-
-			// Reset button states
-			ResetButtonStates();
-
-			UnityEngine.Debug.Log("<color=green>[PromotionUI] Promotion dialog hidden</color>");
+			// Fire event for consistency
+			OnPromotionSelected?.Invoke(promotionPiece);
 		}
 
 		/// <summary>
-		/// Force selection of specific piece (for testing)
+		/// Hide promotion UI (called externally if needed)
 		/// </summary>
-		public void ForceSelection(char piece)
+		public void HidePromotionUI()
 		{
-			if (!isVisible)
+			if (timeoutCoroutine != null)
 			{
-				UnityEngine.Debug.Log("<color=yellow>[PromotionUI] Cannot force selection - dialog not visible</color>");
-				return;
+				StopCoroutine(timeoutCoroutine);
+				timeoutCoroutine = null;
 			}
 
-			SelectPromotion(piece);
+			isWaitingForSelection = false;
+			selectionMade = false;
+			HidePanel();
 		}
 
 		/// <summary>
-		/// Check if promotion dialog is currently visible
+		/// Check if promotion UI is currently active
 		/// </summary>
-		public bool IsVisible()
+		public bool IsActive()
 		{
-			return isVisible;
-		}
-
-		/// <summary>
-		/// Get remaining time before auto-selection
-		/// </summary>
-		public float GetTimeRemaining()
-		{
-			return timeRemaining;
+			return isWaitingForSelection && promotionPanel && promotionPanel.activeInHierarchy;
 		}
 
 		#endregion
 
-		#region Button Event Handlers
+		#region Private Methods
 
-		public void OnQueenSelected()
+		/// <summary>
+		/// Update UI text and button colors based on side
+		/// </summary>
+		private void UpdateUIForSide(char side)
 		{
-			HighlightButton(queenButton);
-			SelectPromotion('Q');
-		}
+			bool isWhite = side == 'w' || char.IsUpper(side);
+			string sideName = isWhite ? "White" : "Black";
+			string squareName = ChessBoard.CoordToAlgebraic(pendingMove.to);
 
-		public void OnRookSelected()
-		{
-			HighlightButton(rookButton);
-			SelectPromotion('R');
-		}
+			if (titleText)
+			{
+				titleText.text = $"{sideName} Promotion ({squareName})";
+				titleText.color = isWhite ? Color.white : new Color(0.2f, 0.2f, 0.2f);
+			}
 
-		public void OnBishopSelected()
-		{
-			HighlightButton(bishopButton);
-			SelectPromotion('B');
-		}
-
-		public void OnKnightSelected()
-		{
-			HighlightButton(knightButton);
-			SelectPromotion('N');
+			// Update button piece letters to match side
+			UpdateButtonText(queenButton, isWhite ? 'Q' : 'q');
+			UpdateButtonText(rookButton, isWhite ? 'R' : 'r');
+			UpdateButtonText(bishopButton, isWhite ? 'B' : 'b');
+			UpdateButtonText(knightButton, isWhite ? 'N' : 'n');
 		}
 
 		/// <summary>
-		/// Handle promotion piece selection with validation and effects
+		/// Update button text with piece symbol
 		/// </summary>
-		private void SelectPromotion(char pieceType)
+		private void UpdateButtonText(Button button, char piece)
 		{
-			if (!isVisible) return;
+			if (!button) return;
 
-			// Validate piece type
-			if ("QRBN".IndexOf(char.ToUpper(pieceType)) < 0)
+			TextMeshProUGUI buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
+			if (buttonText)
 			{
-				UnityEngine.Debug.Log($"<color=red>[PromotionUI] Invalid promotion piece: {pieceType}</color>");
-				return;
-			}
-
-			// Convert to correct case based on promotion side
-			char selectedPiece = isWhitePromotion ? char.ToUpper(pieceType) : char.ToLower(pieceType);
-
-			// Hide dialog first
-			HidePromotionDialog();
-
-			// Fire selection event
-			try
-			{
-				OnPromotionSelected?.Invoke(selectedPiece);
-				UnityEngine.Debug.Log($"<color=green>[PromotionUI] Selected: {selectedPiece} ({GetPieceName(selectedPiece)})</color>");
-			}
-			catch (Exception e)
-			{
-				UnityEngine.Debug.Log($"<color=red>[PromotionUI] Error in promotion event: {e.Message}</color>");
-			}
-		}
-
-		#endregion
-
-		#region Private Methods - UI Updates
-
-		private void UpdatePromotionTitle(bool isWhite, string fromSquare, string toSquare)
-		{
-			if (promotionTitle == null) return;
-
-			string sideText = isWhite ? "White" : "Black";
-			string moveText = !string.IsNullOrEmpty(fromSquare) && !string.IsNullOrEmpty(toSquare)
-				? $" ({fromSquare}-{toSquare})"
-				: "";
-
-			promotionTitle.text = $"{sideText} Promotion{moveText}";
-		}
-
-		private void UpdateButtonSprites(bool isWhite)
-		{
-			if (isWhite)
-			{
-				SetButtonSprite(queenButton, whiteQueenSprite);
-				SetButtonSprite(rookButton, whiteRookSprite);
-				SetButtonSprite(bishopButton, whiteBishopSprite);
-				SetButtonSprite(knightButton, whiteKnightSprite);
-			}
-			else
-			{
-				SetButtonSprite(queenButton, blackQueenSprite);
-				SetButtonSprite(rookButton, blackRookSprite);
-				SetButtonSprite(bishopButton, blackBishopSprite);
-				SetButtonSprite(knightButton, blackKnightSprite);
-			}
-		}
-
-		private void SetButtonSprite(Button button, Sprite sprite)
-		{
-			if (button != null && sprite != null)
-			{
-				Image buttonImage = button.GetComponent<Image>();
-				if (buttonImage != null)
-				{
-					buttonImage.sprite = sprite;
-				}
-			}
-		}
-
-		private void ResetButtonStates()
-		{
-			for (int i = 0; i < allButtons.Length; i++)
-			{
-				if (allButtons[i] != null)
-				{
-					allButtons[i].transform.localScale = originalButtonScales[i];
-					Image buttonImage = allButtons[i].GetComponent<Image>();
-					if (buttonImage != null)
-					{
-						buttonImage.color = originalButtonColors[i];
-					}
-				}
-			}
-		}
-
-		private void HighlightButton(Button selectedButton)
-		{
-			if (selectedButton == null) return;
-
-			// Briefly scale and color the selected button
-			StartCoroutine(ButtonSelectionEffect(selectedButton));
-		}
-
-		private IEnumerator ButtonSelectionEffect(Button button)
-		{
-			Image buttonImage = button.GetComponent<Image>();
-			Vector3 originalScale = button.transform.localScale;
-			Color originalColor = buttonImage != null ? buttonImage.color : Color.white;
-
-			// Quick scale and color animation
-			float duration = 0.2f;
-			float elapsed = 0f;
-
-			while (elapsed < duration)
-			{
-				elapsed += Time.unscaledDeltaTime; // Use unscaled time in case game is paused
-				float t = elapsed / duration;
-
-				// Scale effect
-				float scale = Mathf.Lerp(buttonPressScale, 1f, t);
-				button.transform.localScale = originalScale * scale;
-
-				// Color effect
-				if (buttonImage != null)
-				{
-					buttonImage.color = Color.Lerp(selectedButtonColor, originalColor, t);
-				}
-
-				yield return null;
-			}
-
-			// Ensure final state
-			button.transform.localScale = originalScale;
-			if (buttonImage != null)
-			{
-				buttonImage.color = originalColor;
-			}
-		}
-
-		#endregion
-
-		#region Private Methods - Setup
-
-		private void SetupButtonListeners()
-		{
-			if (queenButton != null)
-				queenButton.onClick.AddListener(OnQueenSelected);
-
-			if (rookButton != null)
-				rookButton.onClick.AddListener(OnRookSelected);
-
-			if (bishopButton != null)
-				bishopButton.onClick.AddListener(OnBishopSelected);
-
-			if (knightButton != null)
-				knightButton.onClick.AddListener(OnKnightSelected);
-		}
-
-		private void SetupButtonEffects()
-		{
-			// Add hover effects to all buttons
-			for (int i = 0; i < allButtons.Length; i++)
-			{
-				if (allButtons[i] != null)
-				{
-					AddHoverEffect(allButtons[i], i);
-				}
-			}
-		}
-
-		private void AddHoverEffect(Button button, int buttonIndex)
-		{
-			// Add event triggers for hover effects
-			UnityEngine.EventSystems.EventTrigger trigger = button.gameObject.GetComponent<UnityEngine.EventSystems.EventTrigger>();
-			if (trigger == null)
-			{
-				trigger = button.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
-			}
-
-			// Pointer enter
-			UnityEngine.EventSystems.EventTrigger.Entry pointerEnter = new UnityEngine.EventSystems.EventTrigger.Entry
-			{
-				eventID = UnityEngine.EventSystems.EventTriggerType.PointerEnter
-			};
-			pointerEnter.callback.AddListener((data) => OnButtonHoverEnter(button, buttonIndex));
-			trigger.triggers.Add(pointerEnter);
-
-			// Pointer exit
-			UnityEngine.EventSystems.EventTrigger.Entry pointerExit = new UnityEngine.EventSystems.EventTrigger.Entry
-			{
-				eventID = UnityEngine.EventSystems.EventTriggerType.PointerExit
-			};
-			pointerExit.callback.AddListener((data) => OnButtonHoverExit(button, buttonIndex));
-			trigger.triggers.Add(pointerExit);
-		}
-
-		private void OnButtonHoverEnter(Button button, int buttonIndex)
-		{
-			if (!isVisible) return;
-
-			button.transform.localScale = originalButtonScales[buttonIndex] * buttonHoverScale;
-		}
-
-		private void OnButtonHoverExit(Button button, int buttonIndex)
-		{
-			if (!isVisible) return;
-
-			button.transform.localScale = originalButtonScales[buttonIndex];
-		}
-
-		private void ValidateConfiguration()
-		{
-			bool isValid = true;
-
-			if (promotionPanel == null)
-			{
-				UnityEngine.Debug.Log("<color=red>[PromotionUI] promotionPanel is not assigned!</color>");
-				isValid = false;
-			}
-
-			if (queenButton == null || rookButton == null || bishopButton == null || knightButton == null)
-			{
-				UnityEngine.Debug.Log("<color=red>[PromotionUI] One or more promotion buttons are not assigned!</color>");
-				isValid = false;
-			}
-
-			// Check sprite assignments
-			if (whiteQueenSprite == null || blackQueenSprite == null)
-			{
-				UnityEngine.Debug.Log("<color=yellow>[PromotionUI] Queen sprites missing - buttons may appear blank</color>");
-			}
-
-			if (autoSelectTimeoutSeconds <= 0f)
-			{
-				UnityEngine.Debug.Log("<color=yellow>[PromotionUI] Auto-select timeout <= 0, disabling auto-select</color>");
-				enableAutoSelect = false;
-			}
-
-			if (isValid)
-			{
-				UnityEngine.Debug.Log("<color=green>[PromotionUI] Configuration validation passed</color>");
-			}
-		}
-
-		#endregion
-
-		#region Private Methods - Coroutines
-
-		private void StopAllPromotionCoroutines()
-		{
-			if (autoSelectCoroutine != null)
-			{
-				StopCoroutine(autoSelectCoroutine);
-				autoSelectCoroutine = null;
-			}
-
-			if (countdownCoroutine != null)
-			{
-				StopCoroutine(countdownCoroutine);
-				countdownCoroutine = null;
-			}
-		}
-
-		private IEnumerator AutoSelectCoroutine()
-		{
-			float elapsed = 0f;
-
-			// Use unscaled time in case game is paused
-			while (elapsed < autoSelectTimeoutSeconds && isVisible)
-			{
-				yield return null;
-				elapsed += Time.unscaledDeltaTime;
-				timeRemaining = autoSelectTimeoutSeconds - elapsed;
-			}
-
-			// Auto-select if still visible
-			if (isVisible)
-			{
-				UnityEngine.Debug.Log($"<color=cyan>[PromotionUI] Auto-selecting {defaultPromotionPiece} after {autoSelectTimeoutSeconds}s timeout</color>");
-				SelectPromotion(defaultPromotionPiece);
-			}
-		}
-
-		private IEnumerator CountdownCoroutine()
-		{
-			float elapsed = 0f;
-
-			while (elapsed < autoSelectTimeoutSeconds && isVisible && countdownText != null)
-			{
-				yield return null;
-				elapsed += Time.unscaledDeltaTime;
-				timeRemaining = autoSelectTimeoutSeconds - elapsed;
-
-				// Update countdown display
-				if (enableAutoSelect)
-				{
-					countdownText.text = $"Auto-select Queen in: {timeRemaining:F1}s";
-				}
-				else
-				{
-					countdownText.text = "Choose promotion piece";
-				}
-			}
-
-			// Clear countdown text
-			if (countdownText != null)
-			{
-				countdownText.text = "";
-			}
-		}
-
-		#endregion
-
-		#region Public Configuration Methods
-
-		/// <summary>
-		/// Get current auto-select timeout
-		/// </summary>
-		public float GetAutoSelectTimeout()
-		{
-			return autoSelectTimeoutSeconds;
-		}
-
-		/// <summary>
-		/// Set auto-select timeout (runtime configuration)
-		/// </summary>
-		public void SetAutoSelectTimeout(float timeoutSeconds)
-		{
-			autoSelectTimeoutSeconds = Mathf.Max(0.5f, timeoutSeconds);
-			UnityEngine.Debug.Log($"<color=green>[PromotionUI] Auto-select timeout set to {autoSelectTimeoutSeconds}s</color>");
-		}
-
-		/// <summary>
-		/// Enable/disable auto-selection feature
-		/// </summary>
-		public void SetAutoSelectEnabled(bool enabled)
-		{
-			enableAutoSelect = enabled;
-
-			// Cancel current auto-select if disabling
-			if (!enabled && autoSelectCoroutine != null)
-			{
-				StopCoroutine(autoSelectCoroutine);
-				autoSelectCoroutine = null;
-			}
-
-			UnityEngine.Debug.Log($"<color=green>[PromotionUI] Auto-select {(enabled ? "enabled" : "disabled")}</color>");
-		}
-
-		/// <summary>
-		/// Set default promotion piece for auto-selection
-		/// </summary>
-		public void SetDefaultPromotionPiece(char piece)
-		{
-			char upperPiece = char.ToUpper(piece);
-			if ("QRBN".IndexOf(upperPiece) >= 0)
-			{
-				defaultPromotionPiece = upperPiece;
-				UnityEngine.Debug.Log($"<color=green>[PromotionUI] Default promotion piece set to {GetPieceName(upperPiece)}</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log($"<color=red>[PromotionUI] Invalid default promotion piece: {piece}. Using Queen.</color>");
-				defaultPromotionPiece = 'Q';
+				buttonText.text = GetPieceSymbol(piece);
 			}
 		}
 
 		/// <summary>
-		/// Set whether game should pause during promotion selection
+		/// Get Unicode chess piece symbol
 		/// </summary>
-		public void SetPauseGameDuringSelection(bool pause)
+		private string GetPieceSymbol(char piece)
 		{
-			pauseGameDuringSelection = pause;
-			UnityEngine.Debug.Log($"<color=green>[PromotionUI] Pause during selection: {pause}</color>");
+			switch (char.ToUpper(piece))
+			{
+				case 'Q': return char.IsUpper(piece) ? "♕" : "♛";
+				case 'R': return char.IsUpper(piece) ? "♖" : "♜";
+				case 'B': return char.IsUpper(piece) ? "♗" : "♝";
+				case 'N': return char.IsUpper(piece) ? "♘" : "♞";
+				default: return piece.ToString();
+			}
 		}
 
-		#endregion
-
-		#region Utility Methods
-
+		/// <summary>
+		/// Get piece name for logging
+		/// </summary>
 		private string GetPieceName(char piece)
 		{
 			switch (char.ToUpper(piece))
@@ -676,112 +220,355 @@ namespace GPTDeepResearch
 				case 'R': return "Rook";
 				case 'B': return "Bishop";
 				case 'N': return "Knight";
-				default: return piece.ToString();
+				default: return "Unknown";
 			}
 		}
 
-		private Sprite GetPieceSprite(char piece, bool isWhite)
+		/// <summary>
+		/// Handle promotion piece selection
+		/// </summary>
+		private void SelectPromotion(char pieceType)
 		{
-			char upperPiece = char.ToUpper(piece);
+			if (!isWaitingForSelection || selectionMade)
+				return;
 
-			if (isWhite)
+			// Adjust case based on pending move piece color
+			bool isWhite = char.IsUpper(pendingMove.piece);
+			pendingPromotionPiece = isWhite ? char.ToUpper(pieceType) : char.ToLower(pieceType);
+			selectionMade = true;
+
+			Debug.Log($"<color=green>[PromotionUI] Player selected {GetPieceName(pendingPromotionPiece)} promotion</color>");
+
+			// Stop timeout and hide UI
+			if (timeoutCoroutine != null)
 			{
-				switch (upperPiece)
-				{
-					case 'Q': return whiteQueenSprite;
-					case 'R': return whiteRookSprite;
-					case 'B': return whiteBishopSprite;
-					case 'N': return whiteKnightSprite;
-				}
-			}
-			else
-			{
-				switch (upperPiece)
-				{
-					case 'Q': return blackQueenSprite;
-					case 'R': return blackRookSprite;
-					case 'B': return blackBishopSprite;
-					case 'N': return blackKnightSprite;
-				}
+				StopCoroutine(timeoutCoroutine);
+				timeoutCoroutine = null;
 			}
 
-			return null;
+			HidePanel();
+			isWaitingForSelection = false;
+
+			// Fire selection event
+			OnPromotionSelected?.Invoke(pendingPromotionPiece);
+		}
+
+		/// <summary>
+		/// Handle promotion cancellation
+		/// </summary>
+		private void CancelPromotion()
+		{
+			if (!isWaitingForSelection || !allowCancel)
+				return;
+
+			selectionMade = true;
+
+			Debug.Log("<color=yellow>[PromotionUI] Promotion cancelled by user</color>");
+
+			if (timeoutCoroutine != null)
+			{
+				StopCoroutine(timeoutCoroutine);
+				timeoutCoroutine = null;
+			}
+
+			HidePanel();
+			isWaitingForSelection = false;
+
+			OnPromotionCancelled?.Invoke();
+		}
+
+		/// <summary>
+		/// Timeout coroutine with countdown display
+		/// </summary>
+		private IEnumerator TimeoutCoroutine(Action<char> onComplete)
+		{
+			float remainingTime = timeoutSeconds;
+
+			while (remainingTime > 0 && !selectionMade)
+			{
+				if (showTimer && timerText)
+				{
+					timerText.text = $"Auto-Queen in {remainingTime:F1}s";
+				}
+
+				OnTimerUpdate?.Invoke(remainingTime);
+
+				yield return new WaitForSeconds(0.1f);
+				remainingTime -= 0.1f;
+			}
+
+			// Timeout reached and no selection made
+			if (!selectionMade && isWaitingForSelection)
+			{
+				bool isWhite = char.IsUpper(pendingMove.piece);
+				char defaultPiece = isWhite ? char.ToUpper(defaultPromotionPiece) : char.ToLower(defaultPromotionPiece);
+
+				pendingPromotionPiece = defaultPiece;
+				selectionMade = true;
+				isWaitingForSelection = false;
+
+				Debug.Log($"<color=yellow>[PromotionUI] Timeout reached, auto-promoting to {GetPieceName(defaultPiece)}</color>");
+
+				HidePanel();
+				onComplete?.Invoke(defaultPiece);
+			}
+
+			timeoutCoroutine = null;
+		}
+
+		/// <summary>
+		/// Show promotion panel with animation
+		/// </summary>
+		private void ShowPanel()
+		{
+			if (!promotionPanel) return;
+
+			promotionPanel.SetActive(true);
+
+			// Simple fade-in animation
+			if (backgroundOverlay)
+			{
+				StartCoroutine(FadeIn(backgroundOverlay, 0.3f));
+			}
+		}
+
+		/// <summary>
+		/// Hide promotion panel
+		/// </summary>
+		private void HidePanel()
+		{
+			if (!promotionPanel) return;
+
+			promotionPanel.SetActive(false);
+
+			if (timerText)
+			{
+				timerText.text = "";
+			}
+		}
+
+		/// <summary>
+		/// Fade in UI element
+		/// </summary>
+		private IEnumerator FadeIn(Image image, float duration)
+		{
+			float elapsed = 0f;
+			Color color = image.color;
+			color.a = 0f;
+
+			while (elapsed < duration)
+			{
+				elapsed += Time.deltaTime;
+				color.a = Mathf.Lerp(0f, 0.8f, elapsed / duration);
+				image.color = color;
+				yield return null;
+			}
+
+			color.a = 0.8f;
+			image.color = color;
+		}
+
+		/// <summary>
+		/// Validate inspector setup
+		/// </summary>
+		private void ValidateSetup()
+		{
+			if (!promotionPanel)
+				Debug.Log("<color=red>[PromotionUI] Missing promotionPanel reference in inspector</color>");
+
+			if (!queenButton || !rookButton || !bishopButton || !knightButton)
+				Debug.Log("<color=red>[PromotionUI] Missing piece button references in inspector</color>");
+
+			if (timeoutSeconds < 0f)
+			{
+				Debug.Log("<color=yellow>[PromotionUI] Invalid timeout, using default 3 seconds</color>");
+				timeoutSeconds = 3f;
+			}
+
+			if ("QRBN".IndexOf(char.ToUpper(defaultPromotionPiece)) < 0)
+			{
+				Debug.Log("<color=yellow>[PromotionUI] Invalid default promotion piece, using Queen</color>");
+				defaultPromotionPiece = 'Q';
+			}
 		}
 
 		#endregion
 
-		#region Testing Methods
+		#region Static Utility Methods
 
 		/// <summary>
-		/// Test promotion UI with all piece types
+		/// Check if a move requires promotion UI (human pawn to last rank)
+		/// </summary>
+		public static bool RequiresPromotionUI(ChessMove move, char humanSide)
+		{
+			if (char.ToUpper(move.piece) != 'P')
+				return false;
+
+			bool isHumanMove = (humanSide == 'w' && char.IsUpper(move.piece)) ||
+							  (humanSide == 'b' && char.IsLower(move.piece)) ||
+							  (humanSide == 'x'); // Both sides human
+
+			if (!isHumanMove)
+				return false;
+
+			bool isWhitePawn = char.IsUpper(move.piece);
+			int promotionRank = isWhitePawn ? 7 : 0;
+
+			return move.to.y == promotionRank;
+		}
+
+		/// <summary>
+		/// Validate promotion piece character
+		/// </summary>
+		public static bool IsValidPromotionPiece(char piece)
+		{
+			return "QRBNqrbn".IndexOf(piece) >= 0;
+		}
+
+		/// <summary>
+		/// Get promotion piece with correct case for side
+		/// </summary>
+		public static char GetPromotionPieceForSide(char pieceType, bool isWhite)
+		{
+			char piece = char.ToUpper(pieceType);
+			if ("QRBN".IndexOf(piece) < 0)
+				piece = 'Q'; // Default to Queen
+
+			return isWhite ? piece : char.ToLower(piece);
+		}
+
+		#endregion
+
+		#region Test Methods
+
+		/// <summary>
+		/// Test promotion UI functionality
 		/// </summary>
 		public void TestPromotionUI()
 		{
-			StartCoroutine(TestPromotionSequence());
-		}
+			Debug.Log("<color=cyan>[PromotionUI] Testing promotion UI...</color>");
 
-		private IEnumerator TestPromotionSequence()
-		{
-			UnityEngine.Debug.Log("<color=cyan>[PromotionUI] Starting promotion UI test...</color>");
+			// Test move creation
+			ChessMove testMove = new ChessMove(new SPACE_UTIL.v2(4, 6), new SPACE_UTIL.v2(4, 7), 'P', '\0');
 
-			// Test white promotion
-			ShowPromotionDialog(true, "e7", "e8");
-			yield return new WaitForSecondsRealtime(1f);
-
-			if (isVisible)
+			if (RequiresPromotionUI(testMove, 'w'))
 			{
-				OnQueenSelected();
-				UnityEngine.Debug.Log("<color=green>[PromotionUI] White Queen promotion test passed</color>");
-			}
-
-			yield return new WaitForSecondsRealtime(0.5f);
-
-			// Test black promotion
-			ShowPromotionDialog(false, "d2", "d1");
-			yield return new WaitForSecondsRealtime(1f);
-
-			if (isVisible)
-			{
-				OnKnightSelected();
-				UnityEngine.Debug.Log("<color=green>[PromotionUI] Black Knight promotion test passed</color>");
-			}
-
-			UnityEngine.Debug.Log("<color=green>[PromotionUI] Promotion UI test completed</color>");
-		}
-
-		/// <summary>
-		/// Test auto-select functionality
-		/// </summary>
-		public void TestAutoSelect()
-		{
-			StartCoroutine(TestAutoSelectSequence());
-		}
-
-		private IEnumerator TestAutoSelectSequence()
-		{
-			UnityEngine.Debug.Log("<color=cyan>[PromotionUI] Testing auto-select...</color>");
-
-			float originalTimeout = autoSelectTimeoutSeconds;
-			SetAutoSelectTimeout(1f); // Short timeout for testing
-
-			ShowPromotionDialog(true);
-
-			// Wait for auto-select
-			yield return new WaitForSecondsRealtime(1.5f);
-
-			if (!isVisible)
-			{
-				UnityEngine.Debug.Log("<color=green>[PromotionUI] Auto-select test passed</color>");
+				Debug.Log("<color=green>[PromotionUI] ✓ Correctly detected promotion requirement</color>");
 			}
 			else
 			{
-				UnityEngine.Debug.Log("<color=red>[PromotionUI] Auto-select test failed - dialog still visible</color>");
-				HidePromotionDialog();
+				Debug.Log("<color=red>[PromotionUI] ✗ Failed to detect promotion requirement</color>");
 			}
 
-			// Restore original timeout
-			SetAutoSelectTimeout(originalTimeout);
+			// Test piece validation
+			char[] validPieces = { 'Q', 'R', 'B', 'N', 'q', 'r', 'b', 'n' };
+			char[] invalidPieces = { 'P', 'K', 'X', '0', ' ' };
+
+			foreach (char piece in validPieces)
+			{
+				if (IsValidPromotionPiece(piece))
+				{
+					Debug.Log($"<color=green>[PromotionUI] ✓ Valid piece: {piece}</color>");
+				}
+				else
+				{
+					Debug.Log($"<color=red>[PromotionUI] ✗ Should be valid: {piece}</color>");
+				}
+			}
+
+			foreach (char piece in invalidPieces)
+			{
+				if (!IsValidPromotionPiece(piece))
+				{
+					Debug.Log($"<color=green>[PromotionUI] ✓ Invalid piece rejected: {piece}</color>");
+				}
+				else
+				{
+					Debug.Log($"<color=red>[PromotionUI] ✗ Should be invalid: {piece}</color>");
+				}
+			}
+
+			// Test case conversion
+			char whiteQueen = GetPromotionPieceForSide('q', true);
+			char blackQueen = GetPromotionPieceForSide('Q', false);
+
+			if (whiteQueen == 'Q' && blackQueen == 'q')
+			{
+				Debug.Log("<color=green>[PromotionUI] ✓ Case conversion works correctly</color>");
+			}
+			else
+			{
+				Debug.Log($"<color=red>[PromotionUI] ✗ Case conversion failed: {whiteQueen}, {blackQueen}</color>");
+			}
 		}
+
+		/// <summary>
+		/// Test timeout functionality
+		/// </summary>
+		public void TestTimeout()
+		{
+			ChessMove testMove = new ChessMove(new SPACE_UTIL.v2(0, 6), new SPACE_UTIL.v2(0, 7), 'P', '\0');
+
+			ShowPromotionUI(testMove, 'w', (piece) => {
+				Debug.Log($"<color=green>[PromotionUI] Timeout test completed with piece: {piece}</color>");
+			});
+		}
+
+		#endregion
+
+		#region Inspector Setup Notes
+
+		/*
+        INSPECTOR SETUP INSTRUCTIONS:
+
+        1. Create UI Canvas with PromotionUI component
+        2. Add child Panel for promotion modal (promotionPanel)
+        3. Add four Buttons for pieces (queenButton, rookButton, bishopButton, knightButton)
+        4. Add optional Cancel button (cancelButton)
+        5. Add TextMeshProUGUI for title (titleText)
+        6. Add TextMeshProUGUI for timer (timerText) if showTimer enabled
+        7. Add Image for background overlay (backgroundOverlay) with semi-transparent black
+
+        PREFAB STRUCTURE:
+        PromotionCanvas (Canvas)
+        └── PromotionUI (This script)
+            └── PromotionPanel (Panel)
+                ├── Background (Image - semi-transparent)
+                ├── TitleText (TextMeshProUGUI)
+                ├── TimerText (TextMeshProUGUI)
+                ├── ButtonRow (Horizontal Layout Group)
+                │   ├── QueenButton (Button + TextMeshProUGUI)
+                │   ├── RookButton (Button + TextMeshProUGUI)
+                │   ├── BishopButton (Button + TextMeshProUGUI)
+                │   └── KnightButton (Button + TextMeshProUGUI)
+                └── CancelButton (Button + TextMeshProUGUI) [optional]
+
+        BUTTON SETUP:
+        - Each button should have TextMeshProUGUI child with chess piece Unicode symbols
+        - Queen: ♕/♛, Rook: ♖/♜, Bishop: ♗/♝, Knight: ♘/♞
+        - Buttons should have comfortable touch/click targets (min 44x44 pixels)
+        - Consider hover effects for desktop play
+
+        EVENTS SETUP:
+        - OnPromotionSelected: Subscribe to handle selected promotion piece
+        - OnPromotionCancelled: Subscribe to handle cancellation (if enabled)
+        - OnTimerUpdate: Subscribe for custom timer UI updates
+
+        USAGE EXAMPLE:
+        ```csharp
+        PromotionUI promotionUI = FindObjectOfType<PromotionUI>();
+        
+        // When human pawn reaches last rank:
+        if (PromotionUI.RequiresPromotionUI(move, chessBoard.humanSide))
+        {
+            promotionUI.ShowPromotionUI(move, chessBoard.sideToMove, (selectedPiece) => {
+                move.promotionPiece = selectedPiece;
+                move.moveType = ChessMove.MoveType.Promotion;
+                chessBoard.MakeMove(move);
+            });
+        }
+        ```
+        */
 
 		#endregion
 	}
