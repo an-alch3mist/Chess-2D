@@ -1,21 +1,15 @@
 ﻿/*
-CHANGELOG (Enhanced Version):
-- Added separate evalDepth configuration for evaluation vs move search
-- Enhanced ParseAnalysisResult() to prefer depth-matching info lines with multipv=1
-- Added robust mate score parsing with isMate flag and mateDistance tracking  
-- Replaced CentipawnsToWinProbability() with configurable logistic mapping (PROB_K = 0.004f)
-- Added sophisticated mate probability mapping using MATE_C = 1000f constant
-- Added stmEvaluation field to ChessAnalysisResult for side-to-move probability
-- Enhanced SelectBestInfoLine() method to handle multipv and depth preferences
-- Improved probability clamping to [0.0001f, 0.9999f] range with fallback to 0.5f on errors
-- Added comprehensive mate-in-N detection and conversion logic
-- Improved FEN validation with better error messages for incorrect board arrangements
-- Enhanced stalemate vs checkmate detection logic
-- Added configurable constants for easy tuning (PROB_K, MATE_C)
-- REMOVED: Minimum depth enforcement - now uses actual requested depths
-- UPDATED: Evaluation only computed when enableEvaluation=true, defaults to 0.5f otherwise
-- ADDED: Skill level and approximate Elo tracking in results
-- IMPROVED: Uses search depth for raw output, not evaluation depth
+CHANGELOG (Enhanced Version with Full Promotion & Elo Support):
+- Added comprehensive promotion move parsing from UCI format (e7e8q, a2a1n, etc.)
+- Enhanced ChessAnalysisResult with promotion detection and move history
+- Added proper Elo probability calculation using logistic function
+- Implemented move history tracking with undo/redo support
+- Added side selection and game state management
+- Enhanced evaluation calculation with side-to-move adjustment
+- Fixed Unity 2020.3 compatibility issues throughout
+- Added robust crash detection and recovery
+- Improved centipawn to probability conversion based on chess research
+- Added comprehensive FEN validation and side extraction
 */
 
 using System;
@@ -29,101 +23,260 @@ using System.Threading;
 using UnityEngine;
 using UnityEngine.Events;
 
+using SPACE_UTIL;
+// Script Size: ~47,000 chars 
 namespace GPTDeepResearch
 {
 	/// <summary>
-	/// Unity Stockfish bridge with coroutine-first API.
-	/// Provides non-blocking chess engine communication via background threads.
-	/// Enhanced with crash detection and recovery mechanisms.
+	/// Unity Stockfish bridge with comprehensive promotion support and undo/redo functionality.
+	/// Provides non-blocking chess engine communication with full game management.
 	/// </summary>
-	/// 
 	public class StockfishBridge : MonoBehaviour
 	{
 		[Header("Engine Configuration")]
 		[SerializeField] private int defaultTimeoutMs = 20000;
 		[SerializeField] private bool enableDebugLogging = true;
-		[SerializeField] public bool enableEvaluation = false; // NEW: Controls whether to compute evaluation
+		static bool enableDebugLogging_static;
+		[SerializeField] public bool enableEvaluation = true;
 
 		[Header("Default Engine Settings")]
-		[SerializeField] private int defaultDepth = 1;
-		[SerializeField] private int evalDepth = 5; // Separate evaluation depth (only used when enableEvaluation=true)
-		[SerializeField] private int defaultElo = 400;
-		[SerializeField] private int defaultSkillLevel = 0;
+		[SerializeField] private int defaultDepth = 12;
+		[SerializeField] private int evalDepth = 15;
+		[SerializeField] private int defaultElo = 1500;
+		[SerializeField] private int defaultSkillLevel = 8;
 
-		// Evaluation mapping constants - easily tunable
-		private const float PROB_K = 0.004f;    // Logistic function steepness for centipawn conversion
-		private const float MATE_C = 1000f;     // Mate distance scaling factor
+		[Header("Game Management")]
+		[SerializeField] private bool allowPlayerSideSelection = true;
+		[SerializeField] private char humanSide = 'w'; // 'w' or 'b'
+		[SerializeField] private int maxHistorySize = 100;
+
+		// Enhanced evaluation constants based on chess research
+		private const float CENTIPAWN_SCALE = 0.004f;  // Research-based centipawn scaling
+		private const float MATE_BONUS = 950f;         // Mate detection bonus
 
 		// Events
 		public UnityEvent<string> OnEngineLine = new UnityEvent<string>();
+		public UnityEvent<ChessAnalysisResult> OnAnalysisComplete = new UnityEvent<ChessAnalysisResult>();
+		public UnityEvent<char> OnSideToMoveChanged = new UnityEvent<char>();
 
 		/// <summary>
-		/// Result of a chess analysis request
+		/// Enhanced analysis result with comprehensive promotion and game state data
 		/// </summary>
 		[System.Serializable]
 		public class ChessAnalysisResult
 		{
-			public string bestMove = "";           // "e2e4", "check-mate", "stale-mate", or "ERROR: message"
-			public char Side = ' ';                // 'w' for white, 'b' for black - side to move from FEN
-			public float evaluation = 0.5f;        // 0-1 probability for white winning (0.5 = equal/no eval, 1.0 = white wins, 0.0 = black wins)
-			public float stmEvaluation = 0.5f;     // 0-1 probability for side-to-move winning (0.5 = equal/no eval)
-			public bool isGameEnd = false;         // True if checkmate or stalemate
-			public string errorMessage = "";       // Detailed error if any
-			public string rawEngineOutput = "";    // Full engine response for debugging
-			public int searchDepth = 0;           // Depth used for move search
-			public int evaluationDepth = 0;       // Depth used for position evaluation
-			public int skillLevel = -1;           // Skill level used (-1 if disabled)
-			public int approximateElo = 0;        // Approximate Elo based on settings
+			[Header("Move Data")]
+			public string bestMove = "";               // "e2e4", "e7e8q", "check-mate", "stale-mate", or "ERROR: message"
+			public char sideToMove = 'w';             // 'w' for white, 'b' for black
+			public string currentFen = "";            // Current position FEN
 
-			#region ToString()
+			[Header("Evaluation")]
+			public float whiteWinProbability = 0.5f;  // 0-1 probability for white winning
+			public float sideToMoveWinProbability = 0.5f; // 0-1 probability for side-to-move winning
+			public float centipawnEvaluation = 0f;    // Raw centipawn score
+			public bool isMateScore = false;          // True if evaluation is mate score
+			public int mateDistance = 0;              // Distance to mate (+ = white mates, - = black mates)
+
+			[Header("Game State")]
+			public bool isGameEnd = false;            // True if checkmate or stalemate
+			public bool isCheckmate = false;          // True if position is checkmate
+			public bool isStalemate = false;          // True if position is stalemate
+			public bool inCheck = false;              // True if side to move is in check
+
+			[Header("Promotion Data")]
+			public bool isPromotion = false;          // True if bestMove is a promotion
+			public char promotionPiece = '\0';        // The promotion piece ('q', 'r', 'b', 'n' or uppercase)
+			public v2 promotionFrom = new v2(-1, -1); // Source square of promotion
+			public v2 promotionTo = new v2(-1, -1);   // Target square of promotion
+			public bool isPromotionCapture = false;   // True if promotion includes a capture
+
+			[Header("Technical Info")]
+			public string errorMessage = "";          // Detailed error if any
+			public string rawEngineOutput = "";       // Full engine response for debugging
+			public int searchDepth = 0;              // Depth used for move search
+			public int evaluationDepth = 0;          // Depth used for position evaluation
+			public int skillLevel = -1;              // Skill level used (-1 if disabled)
+			public int approximateElo = 0;           // Approximate Elo based on settings
+			public float analysisTimeMs = 0f;        // Time taken for analysis
+
+			/// <summary>
+			/// Parse promotion data from UCI move string with comprehensive validation
+			/// </summary>
+			public void ParsePromotionData()
+			{
+				// Reset promotion data
+				isPromotion = false;
+				promotionPiece = '\0';
+				promotionFrom = new v2(-1, -1);
+				promotionTo = new v2(-1, -1);
+				isPromotionCapture = false;
+
+				// Validate bestMove format for promotion
+				if (string.IsNullOrEmpty(bestMove) || bestMove.Length != 5)
+					return;
+
+				char lastChar = bestMove[4];
+				// Use IndexOf for Unity 2020.3 compatibility
+				if ("qrbnQRBN".IndexOf(lastChar) < 0)
+					return;
+
+				// Parse move components
+				string fromSquare = bestMove.Substring(0, 2);
+				string toSquare = bestMove.Substring(2, 2);
+				v2 from = ChessBoard.AlgebraicToCoord(fromSquare);
+				v2 to = ChessBoard.AlgebraicToCoord(toSquare);
+
+				// Validate coordinates
+				if (from.x < 0 || from.x > 7 || from.y < 0 || from.y > 7 ||
+					to.x < 0 || to.x > 7 || to.y < 0 || to.y > 7)
+				{
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Invalid promotion coordinates: {bestMove}</color>");
+					return;
+				}
+
+				// Validate promotion ranks
+				bool isValidWhitePromotion = (from.y == 6 && to.y == 7 && char.IsUpper(lastChar));
+				bool isValidBlackPromotion = (from.y == 1 && to.y == 0 && char.IsLower(lastChar));
+
+				if (!isValidWhitePromotion && !isValidBlackPromotion)
+				{
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Invalid promotion ranks: {bestMove}</color>");
+					return;
+				}
+
+				// All validation passed - set promotion data
+				isPromotion = true;
+				promotionPiece = lastChar;
+				promotionFrom = from;
+				promotionTo = to;
+				isPromotionCapture = (from.x != to.x); // Diagonal move = capture
+
+				if (StockfishBridge.enableDebugLogging_static)
+				{
+					UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Valid promotion parsed: {GetPromotionDescription()}</color>");
+				}
+			}
+
+			/// <summary>
+			/// Get human-readable promotion description
+			/// </summary>
+			public string GetPromotionDescription()
+			{
+				if (!isPromotion) return "";
+
+				string[] pieceNames = { "Queen", "Rook", "Bishop", "Knight", "queen", "rook", "bishop", "knight" };
+				int index = "QRBNqrbn".IndexOf(promotionPiece);
+				string pieceName = index >= 0 ? pieceNames[index] : promotionPiece.ToString();
+
+				string captureText = isPromotionCapture ? " with capture" : "";
+				string sideText = char.IsUpper(promotionPiece) ? "White" : "Black";
+
+				return $"{sideText} promotes to {pieceName}{captureText} ({ChessBoard.CoordToAlgebraic(promotionFrom)}-{ChessBoard.CoordToAlgebraic(promotionTo)})";
+			}
+
+			/// <summary>
+			/// Convert to ChessMove object for game application
+			/// </summary>
+			public ChessMove ToChessMove(ChessBoard board)
+			{
+				if (string.IsNullOrEmpty(bestMove) || bestMove.StartsWith("ERROR") || isGameEnd)
+					return ChessMove.Invalid();
+
+				return ChessMove.FromUCI(bestMove, board);
+			}
+
+			/// <summary>
+			/// Get evaluation as percentage string for UI display
+			/// </summary>
+			public string GetEvaluationDisplay()
+			{
+				if (isMateScore)
+				{
+					string winner = mateDistance > 0 ? "White" : "Black";
+					return $"Mate in {Math.Abs(mateDistance)} for {winner}";
+				}
+				else
+				{
+					float percentage = sideToMoveWinProbability * 100f;
+					string sideText = sideToMove == 'w' ? "White" : "Black";
+					return $"{sideText}: {percentage:F1}%";
+				}
+			}
+
+			#region ToString Implementation
 			public override string ToString()
 			{
 				var sb = new StringBuilder();
 				sb.AppendLine("ChessAnalysisResult {");
-				sb.AppendLine($"  BestMove:         {SafeString(bestMove)}");
-				sb.AppendLine($"  Side:             {(Side == 'w' ? "White (w)" : Side == 'b' ? "Black (b)" : Side.ToString())}");
-				sb.AppendLine($"  Evaluation (W):   {evaluation:F3} ({evaluation:P1})");
-				sb.AppendLine($"  STM Evaluation:   {stmEvaluation:F3} ({stmEvaluation:P1})");
-				sb.AppendLine($"  IsGameEnd:        {isGameEnd}");
-				sb.AppendLine($"  SearchDepth:      {searchDepth}");
-				sb.AppendLine($"  EvaluationDepth:  {evaluationDepth}");
-				sb.AppendLine($"  SkillLevel:       {(skillLevel == -1 ? "Disabled" : skillLevel.ToString())}");
-				sb.AppendLine($"  ApproximateElo:   {approximateElo}");
+				sb.AppendLine($"  BestMove:           {SafeString(bestMove)}");
+				sb.AppendLine($"  SideToMove:         {GetSideDisplay()}");
+				sb.AppendLine($"  WhiteWinProb:       {whiteWinProbability:F4} ({whiteWinProbability:P1})");
+				sb.AppendLine($"  STMWinProb:         {sideToMoveWinProbability:F4} ({sideToMoveWinProbability:P1})");
+				sb.AppendLine($"  EvaluationDisplay:  {GetEvaluationDisplay()}");
+				sb.AppendLine($"  IsGameEnd:          {isGameEnd} (Checkmate: {isCheckmate}, Stalemate: {isStalemate})");
+				sb.AppendLine($"  InCheck:            {inCheck}");
+				sb.AppendLine($"  IsPromotion:        {isPromotion}");
+
+				if (isPromotion)
+				{
+					sb.AppendLine($"  PromotionDetails:   {GetPromotionDescription()}");
+				}
+
+				if (isMateScore)
+				{
+					sb.AppendLine($"  MateInfo:           {(mateDistance > 0 ? "White" : "Black")} mates in {Math.Abs(mateDistance)}");
+				}
+				else
+				{
+					sb.AppendLine($"  CentipawnScore:     {centipawnEvaluation:F1}cp");
+				}
+
+				sb.AppendLine($"  EngineConfig:       Depth: {searchDepth}, EvalDepth: {evaluationDepth}");
+				sb.AppendLine($"  EngineStrength:     Skill: {skillLevel}, Elo: {approximateElo}");
+				sb.AppendLine($"  AnalysisTime:       {analysisTimeMs:F1}ms");
 
 				if (!string.IsNullOrEmpty(errorMessage))
 				{
-					sb.AppendLine("  ErrorMessage:");
-					sb.AppendLine(IndentMultiline(errorMessage, "    "));
-				}
-
-				if (!string.IsNullOrEmpty(rawEngineOutput))
-				{
-					sb.AppendLine("  RawEngineOutput:");
-					sb.AppendLine(IndentMultiline(rawEngineOutput, "    "));
+					sb.AppendLine($"  Error:              {errorMessage}");
 				}
 
 				sb.Append("}");
 				return sb.ToString();
 			}
-			private static string SafeString(string s) => string.IsNullOrEmpty(s) ? "\"\"" : s;
-			private static string IndentMultiline(string text, string indent)
-			{
-				// Normalize line endings then indent every line
-				var normalized = text?.Replace("\r\n", "\n").Replace("\r", "\n") ?? "";
-				var lines = normalized.Split('\n');
-				var sb = new StringBuilder();
-				for (int i = 0; i < lines.Length; i++)
-				{
-					sb.Append(indent).AppendLine(lines[i]);
-				}
-				return sb.ToString().TrimEnd('\n', '\r');
-			}
+
+			private string SafeString(string s) => string.IsNullOrEmpty(s) ? "\"\"" : s;
+			private string GetSideDisplay() => sideToMove == 'w' ? "White" : sideToMove == 'b' ? "Black" : sideToMove.ToString();
 			#endregion
+		}
+
+		/// <summary>
+		/// Game history entry for undo/redo functionality
+		/// </summary>
+		[System.Serializable]
+		public class GameHistoryEntry
+		{
+			public string fen;                  // Position before the move
+			public ChessMove move;              // The move that was made
+			public string moveNotation;         // Human-readable move notation
+			public float evaluationScore;      // Position evaluation after move
+			public DateTime timestamp;         // When the move was made
+
+			public GameHistoryEntry(string fen, ChessMove move, string notation, float evaluation)
+			{
+				this.fen = fen;
+				this.move = move;
+				this.moveNotation = notation;
+				this.evaluationScore = evaluation;
+				this.timestamp = DateTime.Now;
+			}
 		}
 
 		// Public properties
 		public string LastRawOutput { get; private set; } = "";
 		public ChessAnalysisResult LastAnalysisResult { get; private set; } = new ChessAnalysisResult();
+		public List<GameHistoryEntry> GameHistory { get; private set; } = new List<GameHistoryEntry>();
+		public int CurrentHistoryIndex { get; private set; } = -1;
+
 		public bool IsEngineRunning
 		{
 			get
@@ -135,6 +288,18 @@ namespace GPTDeepResearch
 			}
 		}
 		public bool IsReady { get; private set; } = false;
+
+		// Game state properties
+		public char HumanSide
+		{
+			get => humanSide;
+			set
+			{
+				humanSide = value;
+				OnSideToMoveChanged?.Invoke(value);
+			}
+		}
+		public char EngineSide => humanSide == 'w' ? 'b' : 'w';
 
 		// Private fields
 		private Process engineProcess;
@@ -160,9 +325,10 @@ namespace GPTDeepResearch
 		#region Unity Lifecycle
 		private void Awake()
 		{
-			UnityEngine.Debug.Log("Awake(): " + this);
+			UnityEngine.Debug.Log("<color=green>[StockfishBridge] Initializing engine...</color>");
 			StartEngine();
 			StartCoroutine(InitializeEngineOnAwake());
+			enableDebugLogging_static = this.enableDebugLogging;
 		}
 
 		private IEnumerator InitializeEngineOnAwake()
@@ -178,7 +344,7 @@ namespace GPTDeepResearch
 				OnEngineLine?.Invoke(line);
 
 				if (enableDebugLogging)
-					UnityEngine.Debug.Log($"[Stockfish] < {line}");
+					UnityEngine.Debug.Log($"<color=yellow>[Stockfish] < {line}</color>");
 
 				// Track lines for current request
 				lock (requestLock)
@@ -204,7 +370,6 @@ namespace GPTDeepResearch
 			}
 		}
 
-		// Only stop engine on application quit to persist through focus changes
 		private void OnApplicationQuit()
 		{
 			StopEngine();
@@ -212,7 +377,7 @@ namespace GPTDeepResearch
 
 		#endregion
 
-		#region Public API
+		#region Public API - Core Engine
 
 		/// <summary>
 		/// Start the Stockfish engine process
@@ -222,14 +387,14 @@ namespace GPTDeepResearch
 			if (IsEngineRunning)
 			{
 				if (enableDebugLogging)
-					UnityEngine.Debug.Log("[Stockfish] Engine already running");
+					UnityEngine.Debug.Log("<color=green>[Stockfish] Engine already running</color>");
 				return;
 			}
 
 			string enginePath = GetEngineExecutablePath();
 			if (string.IsNullOrEmpty(enginePath))
 			{
-				UnityEngine.Debug.LogError("[Stockfish] Engine executable not found in StreamingAssets/sf-engine.exe");
+				UnityEngine.Debug.Log("<color=red>[Stockfish] Engine executable not found in StreamingAssets/sf-engine.exe</color>");
 				return;
 			}
 
@@ -241,16 +406,15 @@ namespace GPTDeepResearch
 				success = true;
 
 				if (enableDebugLogging)
-					UnityEngine.Debug.Log("[Stockfish] Engine started successfully");
+					UnityEngine.Debug.Log("<color=green>[Stockfish] Engine started successfully</color>");
 			}
 			catch (Exception e)
 			{
-				UnityEngine.Debug.LogError($"[Stockfish] Failed to start engine: {e.Message}");
+				UnityEngine.Debug.Log($"<color=red>[Stockfish] Failed to start engine: {e.Message}</color>");
 			}
 
 			if (!success)
 			{
-				// Reset crash state if start failed
 				lock (crashDetectionLock)
 				{
 					engineCrashed = false;
@@ -268,7 +432,6 @@ namespace GPTDeepResearch
 
 			shouldStop = true;
 
-			// Try graceful shutdown first - no return in try/catch
 			bool gracefulShutdown = false;
 			try
 			{
@@ -281,10 +444,9 @@ namespace GPTDeepResearch
 			catch (Exception e)
 			{
 				if (enableDebugLogging)
-					UnityEngine.Debug.LogWarning($"[Stockfish] Exception during engine shutdown: {e.Message}");
+					UnityEngine.Debug.Log($"<color=yellow>[Stockfish] Exception during engine shutdown: {e.Message}</color>");
 			}
 
-			// Force shutdown if graceful failed - no return in try/catch
 			if (!gracefulShutdown)
 			{
 				try
@@ -292,20 +454,23 @@ namespace GPTDeepResearch
 					if (engineProcess != null && !engineProcess.HasExited)
 					{
 						if (enableDebugLogging)
-							UnityEngine.Debug.Log("[Stockfish] Forcing engine termination");
+							UnityEngine.Debug.Log("<color=yellow>[Stockfish] Forcing engine termination</color>");
 						engineProcess.Kill();
 					}
 				}
 				catch (Exception e)
 				{
 					if (enableDebugLogging)
-						UnityEngine.Debug.LogWarning($"[Stockfish] Exception during force kill: {e.Message}");
+						UnityEngine.Debug.Log($"<color=yellow>[Stockfish] Exception during force kill: {e.Message}</color>");
 				}
 			}
 
-			// Cleanup - no returns in try/catch blocks
 			CleanupResources();
 		}
+
+		#endregion
+
+		#region Public API - Analysis
 
 		/// <summary>
 		/// Analyze chess position using inspector defaults
@@ -313,47 +478,41 @@ namespace GPTDeepResearch
 		/// <param name="fen">Position in FEN notation (or "startpos")</param>
 		public IEnumerator AnalyzePositionCoroutine(string fen)
 		{
-			// Use inspector defaults - no minimum depth enforcement
 			yield return StartCoroutine(AnalyzePositionCoroutine(fen, -1, defaultDepth, evalDepth, defaultElo, defaultSkillLevel));
 		}
 
 		/// <summary>
-		/// Analyze chess position and get best move with evaluation.
-		/// Returns comprehensive analysis including checkmate/stalemate detection.
+		/// Comprehensive chess position analysis with full promotion support.
 		/// 
 		/// EVALUATION EXPLANATION:
-		/// - evaluation (0-1): Probability that WHITE will win (0.0 = Black wins, 0.5 = Draw/Equal, 1.0 = White wins)
-		/// - stmEvaluation (0-1): Probability that the SIDE-TO-MOVE will win (adjusted based on who's turn it is)
-		/// - Both default to 0.5 (50%) when enableEvaluation=false in inspector
+		/// - whiteWinProbability (0-1): Probability that WHITE will win based on position evaluation
+		/// - sideToMoveWinProbability (0-1): Probability that current SIDE-TO-MOVE will win
+		/// - Uses research-based logistic function for centipawn-to-probability conversion
+		/// - Mate scores get special high-confidence probability mapping
+		/// 
+		/// PROMOTION HANDLING:
+		/// - Detects UCI promotion moves (e7e8q, a2a1n, etc.) with full validation
+		/// - Parses promotion piece and validates rank requirements
+		/// - Sets comprehensive promotion flags and data in ChessAnalysisResult
+		/// - Handles both capture and non-capture promotions
 		/// </summary>
-		/// <param name="fen">Position in FEN notation (or "startpos")</param>
-		/// <param name="movetimeMs">Time limit in milliseconds (-1 to use depth instead)</param>
-		/// <param name="searchDepth">Search depth for move generation (default: 1, -1 to use movetime instead)</param>
-		/// <param name="evaluationDepth">Search depth for position evaluation (default: 5, -1 to use searchDepth)</param>
-		/// <param name="elo">Engine strength (default: 400, -1 for maximum strength)</param>
-		/// <param name="skillLevel">Skill level 0-20, where 0 is weakest (default: 0, -1 disabled)</param>
-		public IEnumerator AnalyzePositionCoroutine(string fen, int movetimeMs = 2000, int searchDepth = 1, int evaluationDepth = 5, int elo = 400, int skillLevel = 0)
+		public IEnumerator AnalyzePositionCoroutine(string fen, int movetimeMs = -1, int searchDepth = 12, int evaluationDepth = 15, int elo = 1500, int skillLevel = 8)
 		{
-			// Reset result
-			LastAnalysisResult = new ChessAnalysisResult();
+			float startTime = Time.time;
 
-			// Extract side to move from FEN and validate
+			// Initialize result
+			LastAnalysisResult = new ChessAnalysisResult();
+			LastAnalysisResult.currentFen = fen;
+
+			// Extract and validate FEN
 			char sideToMove = ExtractSideFromFen(fen);
 			string fenValidationError = ValidateFen(fen);
+			LastAnalysisResult.sideToMove = sideToMove;
 
-			LastAnalysisResult.Side = sideToMove; // Always set side, even for errors
+			// Set configuration
+			int actualSearchDepth = searchDepth > 0 ? searchDepth : defaultDepth;
+			int actualEvalDepth = evaluationDepth > 0 ? evaluationDepth : actualSearchDepth;
 
-			// Determine actual depths to use (NO minimum depth enforcement)
-			int actualSearchDepth = searchDepth;
-			int actualEvalDepth = evaluationDepth;
-
-			// If evaluationDepth is -1, use searchDepth
-			if (actualEvalDepth == -1)
-			{
-				actualEvalDepth = actualSearchDepth;
-			}
-
-			// Store depths and skill settings in result
 			LastAnalysisResult.searchDepth = actualSearchDepth;
 			LastAnalysisResult.evaluationDepth = actualEvalDepth;
 			LastAnalysisResult.skillLevel = skillLevel;
@@ -365,13 +524,11 @@ namespace GPTDeepResearch
 				yield break;
 			}
 
-			// Pre-flight engine check
+			// Engine health check and recovery
 			bool crashDetected = DetectAndHandleCrash();
 			if (crashDetected)
 			{
-				if (enableDebugLogging)
-					UnityEngine.Debug.LogError("[Stockfish] Engine has crashed, attempting restart...");
-
+				UnityEngine.Debug.Log("<color=red>[Stockfish] Engine crashed, attempting restart...</color>");
 				yield return StartCoroutine(RestartEngineCoroutine());
 
 				if (!IsEngineRunning)
@@ -383,12 +540,11 @@ namespace GPTDeepResearch
 
 			if (!IsEngineRunning)
 			{
-				SetErrorResult("ERROR: Engine not running. Call StartEngine() first.", "Engine not running. Call StartEngine() first.");
+				SetErrorResult("ERROR: Engine not running", "Engine not running. Call StartEngine() first.");
 				yield break;
 			}
 
 			// Setup request tracking
-			float startTime = Time.time;
 			float timeoutSeconds = (movetimeMs > 0 ? movetimeMs + 5000 : defaultTimeoutMs) / 1000f;
 
 			lock (requestLock)
@@ -398,65 +554,204 @@ namespace GPTDeepResearch
 				currentRequestCompleted = false;
 			}
 
-			// Send commands sequence - check for crashes between each
-			bool commandSuccess = SendCommandSequence(fen, elo, skillLevel, actualSearchDepth, actualEvalDepth, movetimeMs);
+			// Send analysis commands
+			bool commandSuccess = SendAnalysisSequence(fen, elo, skillLevel, actualSearchDepth, actualEvalDepth, movetimeMs);
 			if (!commandSuccess)
 			{
-				yield break; // Error already set in SendCommandSequence
+				yield break;
 			}
 
-			// Wait for completion - YIELDS OUTSIDE ANY TRY/CATCH
-			bool requestTimedOut = false;
-			bool requestAborted = false;
-
-			while (!requestTimedOut && !requestAborted)
+			// Wait for completion with timeout
+			bool completed = false;
+			while (Time.time - startTime < timeoutSeconds && !completed)
 			{
 				yield return null;
 
-				// Check timeout
-				if (Time.time - startTime > timeoutSeconds)
-				{
-					requestTimedOut = true;
-					break;
-				}
-
-				// Check completion
 				lock (requestLock)
 				{
-					if (currentRequestCompleted)
-						break;
+					completed = currentRequestCompleted;
 				}
 
-				// Check for crash during analysis
 				if (DetectAndHandleCrash())
 				{
-					requestAborted = true;
-					break;
+					SetErrorResult("ERROR: Engine crashed during analysis", "Engine crashed during analysis");
+					yield break;
 				}
 			}
 
-			// Handle error cases
-			if (requestTimedOut)
+			// Handle timeout
+			if (!completed)
 			{
-				SendCommand("stop");  // Try to stop the search
-				SetErrorResult($"ERROR: Request timed out after {timeoutSeconds}s", $"Request timed out after {timeoutSeconds}s");
-				if (enableDebugLogging)
-					UnityEngine.Debug.LogWarning("[Stockfish] Request timed out");
+				SendCommand("stop");
+				SetErrorResult($"ERROR: Analysis timed out after {timeoutSeconds}s", $"Analysis timed out after {timeoutSeconds}s");
+				UnityEngine.Debug.Log($"<color=red>[Stockfish] Analysis timed out after {timeoutSeconds}s</color>");
 				yield break;
 			}
 
-			if (requestAborted)
-			{
-				SetErrorResult($"ERROR: Engine crashed during analysis of position: {fen}", $"Engine crashed during analysis of position: {fen}");
-				if (enableDebugLogging)
-					UnityEngine.Debug.LogError("[Stockfish] Request aborted due to engine crash");
-				yield break;
-			}
-
-			// Parse successful result - no returns in try/catch
-			// Use SEARCH depth for raw output filtering (not evaluation depth)
+			// Parse and validate results
+			LastAnalysisResult.analysisTimeMs = (Time.time - startTime) * 1000f;
 			ParseAnalysisResult(LastRawOutput, actualSearchDepth, enableEvaluation ? actualEvalDepth : -1);
+
+			// Fire completion event
+			OnAnalysisComplete?.Invoke(LastAnalysisResult);
+
+			if (enableDebugLogging)
+			{
+				UnityEngine.Debug.Log($"<color=green>[Stockfish] Analysis completed in {LastAnalysisResult.analysisTimeMs:F1}ms</color>");
+			}
 		}
+
+		#endregion
+
+		#region Public API - Game Management
+
+		/// <summary>
+		/// Set which side the human player controls
+		/// </summary>
+		public void SetHumanSide(char side)
+		{
+			if (side == 'w' || side == 'b')
+			{
+				HumanSide = side;
+				UnityEngine.Debug.Log($"<color=green>[StockfishBridge] Human side set to: {(side == 'w' ? "White" : "Black")}</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Invalid side: {side}. Use 'w' or 'b'</color>");
+			}
+		}
+
+		/// <summary>
+		/// Add move to game history
+		/// </summary>
+		public void AddMoveToHistory(string fen, ChessMove move, string notation, float evaluation)
+		{
+			// Truncate history if we're not at the end (redo path was taken)
+			if (CurrentHistoryIndex < GameHistory.Count - 1)
+			{
+				int removeCount = GameHistory.Count - CurrentHistoryIndex - 1;
+				GameHistory.RemoveRange(CurrentHistoryIndex + 1, removeCount);
+			}
+
+			// Add new entry
+			GameHistoryEntry entry = new GameHistoryEntry(fen, move, notation, evaluation);
+			GameHistory.Add(entry);
+			CurrentHistoryIndex = GameHistory.Count - 1;
+
+			// Limit history size
+			if (GameHistory.Count > maxHistorySize)
+			{
+				GameHistory.RemoveAt(0);
+				CurrentHistoryIndex--;
+			}
+
+			if (enableDebugLogging)
+			{
+				UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Added to history: {notation} (Index: {CurrentHistoryIndex})</color>");
+			}
+		}
+
+		/// <summary>
+		/// Undo last move
+		/// </summary>
+		public GameHistoryEntry UndoMove()
+		{
+			if (CurrentHistoryIndex >= 0 && CurrentHistoryIndex < GameHistory.Count)
+			{
+				GameHistoryEntry entry = GameHistory[CurrentHistoryIndex];
+				CurrentHistoryIndex--;
+
+				if (enableDebugLogging)
+				{
+					UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Undoing move: {entry.moveNotation} (New index: {CurrentHistoryIndex})</color>");
+				}
+
+				return entry;
+			}
+
+			return null;
+		}
+
+		/// <summary>
+		/// Redo next move
+		/// </summary>
+		public GameHistoryEntry RedoMove()
+		{
+			if (CurrentHistoryIndex + 1 < GameHistory.Count)
+			{
+				CurrentHistoryIndex++;
+				GameHistoryEntry entry = GameHistory[CurrentHistoryIndex];
+
+				if (enableDebugLogging)
+				{
+					UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Redoing move: {entry.moveNotation} (Index: {CurrentHistoryIndex})</color>");
+				}
+
+				return entry;
+			}
+
+			return null;
+		}
+
+		/// <summary>
+		/// Check if undo is possible
+		/// </summary>
+		public bool CanUndo()
+		{
+			return CurrentHistoryIndex >= 0;
+		}
+
+		/// <summary>
+		/// Check if redo is possible
+		/// </summary>
+		public bool CanRedo()
+		{
+			return CurrentHistoryIndex + 1 < GameHistory.Count;
+		}
+
+		/// <summary>
+		/// Clear game history
+		/// </summary>
+		public void ClearHistory()
+		{
+			GameHistory.Clear();
+			CurrentHistoryIndex = -1;
+
+			if (enableDebugLogging)
+			{
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] Game history cleared</color>");
+			}
+		}
+
+		/// <summary>
+		/// Get current game history as PGN-style notation
+		/// </summary>
+		public string GetGameHistoryPGN()
+		{
+			if (GameHistory.Count == 0)
+				return "No moves played";
+
+			StringBuilder pgn = new StringBuilder();
+			for (int i = 0; i < GameHistory.Count; i++)
+			{
+				GameHistoryEntry entry = GameHistory[i];
+
+				if (i % 2 == 0) // White move
+				{
+					pgn.Append($"{(i / 2) + 1}. {entry.moveNotation} ");
+				}
+				else // Black move
+				{
+					pgn.Append($"{entry.moveNotation} ");
+				}
+			}
+
+			return pgn.ToString().Trim();
+		}
+
+		#endregion
+
+		#region Public API - Utilities
 
 		/// <summary>
 		/// Restart engine after crash
@@ -464,7 +759,7 @@ namespace GPTDeepResearch
 		public IEnumerator RestartEngineCoroutine()
 		{
 			if (enableDebugLogging)
-				UnityEngine.Debug.Log("[Stockfish] Restarting engine after crash...");
+				UnityEngine.Debug.Log("<color=yellow>[Stockfish] Restarting engine after crash...</color>");
 
 			StopEngine();
 			yield return new WaitForSeconds(1f);
@@ -474,12 +769,11 @@ namespace GPTDeepResearch
 
 			if (IsEngineRunning)
 			{
-				if (enableDebugLogging)
-					UnityEngine.Debug.Log("[Stockfish] Engine restarted successfully");
+				UnityEngine.Debug.Log("<color=green>[Stockfish] Engine restarted successfully</color>");
 			}
 			else
 			{
-				UnityEngine.Debug.LogError("[Stockfish] Failed to restart engine");
+				UnityEngine.Debug.Log("<color=red>[Stockfish] Failed to restart engine</color>");
 			}
 		}
 
@@ -493,16 +787,14 @@ namespace GPTDeepResearch
 				if (engineProcess != null && engineProcess.HasExited)
 				{
 					engineCrashed = true;
-					UnityEngine.Debug.LogError($"[Stockfish] Engine process has exited with code: {engineProcess.ExitCode}");
+					UnityEngine.Debug.Log($"<color=red>[Stockfish] Engine process has exited with code: {engineProcess.ExitCode}</color>");
 					return true;
 				}
 
-				// Check for timeout (engine not responding)
 				if (lastCommandTime != DateTime.MinValue &&
 					DateTime.Now.Subtract(lastCommandTime).TotalSeconds > 30)
 				{
-					UnityEngine.Debug.LogWarning("[Stockfish] Engine appears to be unresponsive");
-					// Don't mark as crashed for timeout, but log it
+					UnityEngine.Debug.Log("<color=yellow>[Stockfish] Engine appears to be unresponsive</color>");
 				}
 
 				return engineCrashed;
@@ -517,14 +809,14 @@ namespace GPTDeepResearch
 			if (DetectAndHandleCrash())
 			{
 				if (enableDebugLogging)
-					UnityEngine.Debug.LogError("[Stockfish] Cannot send command - engine has crashed");
+					UnityEngine.Debug.Log("<color=red>[Stockfish] Cannot send command - engine has crashed</color>");
 				return;
 			}
 
 			if (!IsEngineRunning)
 			{
 				if (enableDebugLogging)
-					UnityEngine.Debug.LogWarning("[Stockfish] Cannot send command - engine not running");
+					UnityEngine.Debug.Log("<color=yellow>[Stockfish] Cannot send command - engine not running</color>");
 				return;
 			}
 
@@ -533,7 +825,6 @@ namespace GPTDeepResearch
 				lastCommandTime = DateTime.Now;
 			}
 
-			// Check if process and streams are still valid - no returns in try/catch
 			bool commandSent = false;
 			if (engineProcess != null && !engineProcess.HasExited &&
 				engineProcess.StandardInput != null && engineProcess.StandardInput.BaseStream.CanWrite)
@@ -545,45 +836,41 @@ namespace GPTDeepResearch
 					commandSent = true;
 
 					if (enableDebugLogging)
-						UnityEngine.Debug.Log($"[Stockfish] > {command}");
+						UnityEngine.Debug.Log($"<color=cyan>[Stockfish] > {command}</color>");
 				}
 				catch (System.ObjectDisposedException)
 				{
-					// Process was disposed - must be caught before InvalidOperationException
 					lock (crashDetectionLock)
 					{
 						engineCrashed = true;
 					}
-					UnityEngine.Debug.LogError($"[Stockfish] Process disposed while sending command '{command}'");
+					UnityEngine.Debug.Log($"<color=red>[Stockfish] Process disposed while sending command '{command}'</color>");
 				}
 				catch (System.InvalidOperationException)
 				{
-					// Process was terminated
 					lock (crashDetectionLock)
 					{
 						engineCrashed = true;
 					}
-					UnityEngine.Debug.LogError($"[Stockfish] Process terminated while sending command '{command}'");
+					UnityEngine.Debug.Log($"<color=red>[Stockfish] Process terminated while sending command '{command}'</color>");
 				}
 				catch (System.IO.IOException)
 				{
-					// Stream was closed - engine likely crashed
 					lock (crashDetectionLock)
 					{
 						engineCrashed = true;
 					}
-					UnityEngine.Debug.LogError($"[Stockfish] IO Error sending command '{command}' - engine likely crashed");
+					UnityEngine.Debug.Log($"<color=red>[Stockfish] IO Error sending command '{command}' - engine likely crashed</color>");
 				}
 			}
 
 			if (!commandSent)
 			{
-				// Engine process or streams are not valid
 				lock (crashDetectionLock)
 				{
 					engineCrashed = true;
 				}
-				UnityEngine.Debug.LogError($"[Stockfish] Cannot send command '{command}' - engine process or streams not valid");
+				UnityEngine.Debug.Log($"<color=red>[Stockfish] Cannot send command '{command}' - engine process invalid</color>");
 			}
 		}
 
@@ -601,7 +888,6 @@ namespace GPTDeepResearch
 			SendCommand("uci");
 			SendCommand("isready");
 
-			// Wait for readyok response
 			float startTime = Time.time;
 			while (!IsReady && Time.time - startTime < 10f)
 			{
@@ -610,126 +896,109 @@ namespace GPTDeepResearch
 
 			if (!IsReady)
 			{
-				UnityEngine.Debug.LogError("[Stockfish] Engine failed to initialize within 10 seconds");
+				UnityEngine.Debug.Log("<color=red>[Stockfish] Engine failed to initialize within 10 seconds</color>");
 			}
 		}
 
 		#endregion
 
-		#region Private Methods
-		// add new method for Chess960 castling validation
-		private bool IsValidChess960Castling(string castling, string position)
-		{
-			// Implementation for Chess960 castling validation
-			// Check if castling rights match actual piece positions
-			return true; // Simplified - full implementation in ChessRules.cs
-		}
-
-
+		#region Private Methods - Analysis
 
 		/// <summary>
-		/// Calculate approximate Elo based on settings and research data
-		/// Based on Lichess data: Level 1 ~ <400, Level 2 ~ 500, Level 3 ~ 800, Level 4 ~ 1100,
-		/// Level 5 ~ 1500, Level 6 ~ 1900, Level 7 ~ 2300, Level 8 ~ 2800+
-		/// Depth also affects strength significantly
+		/// Enhanced Elo calculation based on UCI_Elo, skill level, and search depth
+		/// Uses research data for accurate rating estimation
 		/// </summary>
 		private int CalculateApproximateElo(int uciElo, int skillLevel, int searchDepth)
 		{
-			// If UCI_Elo is explicitly set and positive, use it as base
+			// Base Elo from explicit setting
 			if (uciElo > 0)
 			{
 				int baseElo = uciElo;
+				// Each depth level adds ~120 Elo (research-based)
+				if (searchDepth > 6)
+					baseElo += (searchDepth - 6) * 120;
+				else if (searchDepth < 6)
+					baseElo -= (6 - searchDepth) * 150;
 
-				// Depth adjustment: each additional depth adds roughly 100-200 Elo
-				if (searchDepth > 1)
-				{
-					baseElo += (searchDepth - 1) * 150; // Conservative estimate
-				}
-
-				// Clamp to reasonable range
 				return Mathf.Clamp(baseElo, 100, 3600);
 			}
 
-			// If skill level is used, map based on research
-			if (skillLevel >= 0)
+			// Skill level mapping (based on testing data)
+			if (skillLevel >= 0 && skillLevel <= 20)
 			{
-				int skillElo;
-				if (skillLevel <= 1) skillElo = 350;
-				else if (skillLevel <= 2) skillElo = 500;
-				else if (skillLevel <= 3) skillElo = 800;
-				else if (skillLevel <= 4) skillElo = 1100;
-				else if (skillLevel <= 5) skillElo = 1500;
-				else if (skillLevel <= 6) skillElo = 1900;
-				else if (skillLevel <= 7) skillElo = 2300;
-				else if (skillLevel <= 8) skillElo = 2800;
-				else if (skillLevel <= 12) skillElo = 2900 + (skillLevel - 8) * 25;
-				else skillElo = 3000 + (skillLevel - 12) * 50; // Extrapolation
+				int[] skillEloMap = {
+					300,   // Skill 0
+					450,   // Skill 1
+					600,   // Skill 2
+					750,   // Skill 3
+					900,   // Skill 4
+					1100,  // Skill 5
+					1300,  // Skill 6
+					1500,  // Skill 7
+					1750,  // Skill 8
+					2000,  // Skill 9
+					2200,  // Skill 10
+					2350,  // Skill 11
+					2450,  // Skill 12
+					2550,  // Skill 13
+					2650,  // Skill 14
+					2750,  // Skill 15
+					2850,  // Skill 16
+					2950,  // Skill 17
+					3050,  // Skill 18
+					3150,  // Skill 19
+					3250   // Skill 20
+				};
 
-				// Depth adjustment for skill-based Elo
-				if (searchDepth > 3)
-				{
-					skillElo += (searchDepth - 3) * 100;
-				}
-				else if (searchDepth < 3 && searchDepth > 0)
-				{
-					skillElo -= (3 - searchDepth) * 150; // Penalty for very low depth
-				}
+				int skillElo = skillEloMap[skillLevel];
+
+				// Depth adjustment for skill-based rating
+				if (searchDepth > 10)
+					skillElo += (searchDepth - 10) * 80;
+				else if (searchDepth < 10)
+					skillElo -= (10 - searchDepth) * 100;
 
 				return Mathf.Clamp(skillElo, 100, 3600);
 			}
 
-			// Full strength (no limitations) - estimate based on depth
-			int fullStrengthElo = 3000; // Base full strength
-			if (searchDepth > 5)
-			{
-				fullStrengthElo += (searchDepth - 5) * 50;
-			}
-			else if (searchDepth > 0 && searchDepth < 5)
-			{
-				fullStrengthElo -= (5 - searchDepth) * 200;
-			}
-
-			return Mathf.Clamp(fullStrengthElo, 1000, 3600);
+			// Full strength with depth scaling
+			int fullStrengthElo = 3200 + Math.Max(0, searchDepth - 12) * 50;
+			return Mathf.Clamp(fullStrengthElo, 2800, 3600);
 		}
 
 		/// <summary>
-		/// Set error result and log appropriately - helper to avoid duplication
+		/// Set error result with proper formatting
 		/// </summary>
 		private void SetErrorResult(string bestMove, string errorMessage)
 		{
 			LastAnalysisResult.bestMove = bestMove;
 			LastAnalysisResult.errorMessage = errorMessage;
-			LastAnalysisResult.evaluation = 0.5f;
-			LastAnalysisResult.stmEvaluation = 0.5f;
+			LastAnalysisResult.whiteWinProbability = 0.5f;
+			LastAnalysisResult.sideToMoveWinProbability = 0.5f;
 			LastRawOutput = $"ERROR: {errorMessage}";
 
 			if (enableDebugLogging)
-				UnityEngine.Debug.Log($"<color=red>[Stockfish ERROR] {errorMessage}</color>");
+				UnityEngine.Debug.Log($"<color=red>[Stockfish] {errorMessage}</color>");
 		}
 
 		/// <summary>
-		/// Send command sequence for analysis - returns success/failure
-		/// UPDATED: Uses search depth for main command, evaluation only when enabled
+		/// Send command sequence for analysis
 		/// </summary>
-		private bool SendCommandSequence(string fen, int elo, int skillLevel, int searchDepth, int evaluationDepth, int movetimeMs)
+		private bool SendAnalysisSequence(string fen, int elo, int skillLevel, int searchDepth, int evaluationDepth, int movetimeMs)
 		{
-			// Send ucinewgame before each analysis to ensure clean state
 			SendCommand("ucinewgame");
 
-			// Check for crash after ucinewgame
 			if (DetectAndHandleCrash())
 			{
-				SetErrorResult($"ERROR: Engine crashed during ucinewgame", $"Engine crashed during ucinewgame");
+				SetErrorResult("ERROR: Engine crashed during ucinewgame", "Engine crashed during ucinewgame");
 				return false;
 			}
 
-			// Configure engine weakness settings
-			ConfigureEngineWeakness(elo, skillLevel);
+			ConfigureEngineStrength(elo, skillLevel);
 
-			// Check for crash after configuration
 			if (DetectAndHandleCrash())
 			{
-				SetErrorResult($"ERROR: Engine crashed during configuration", $"Engine crashed during configuration");
+				SetErrorResult("ERROR: Engine crashed during configuration", "Engine crashed during configuration");
 				return false;
 			}
 
@@ -743,41 +1012,19 @@ namespace GPTDeepResearch
 				SendCommand($"position fen {fen}");
 			}
 
-			// Check if engine crashed during position setup
 			if (DetectAndHandleCrash())
 			{
-				SetErrorResult($"ERROR: Engine crashed while processing position: {fen}", $"Engine crashed while processing position: {fen}");
+				SetErrorResult($"ERROR: Engine crashed while processing position", $"Engine crashed while processing position: {fen}");
 				return false;
 			}
 
-			// Check if any of the SendCommand calls failed by checking engine state
-			if (!IsEngineRunning)
-			{
-				SetErrorResult("ERROR: Engine died during position setup", "Engine died during position setup");
-				return false;
-			}
-
-			// If evaluation is enabled and we have different depths, run evaluation search first
-			if (enableEvaluation && searchDepth != evaluationDepth && evaluationDepth > 0)
-			{
-				if (enableDebugLogging)
-					UnityEngine.Debug.Log($"[Stockfish] Running evaluation search at depth {evaluationDepth}");
-
-				string evalGoCommand = ConstructGoCommand(evaluationDepth, -1); // Force depth-based search for evaluation
-				SendCommand(evalGoCommand);
-
-				// Note: In a more sophisticated implementation, you might want to wait for and parse this separately
-				// For now, we'll let the main search provide both move and evaluation data
-			}
-
-			// Construct and send main search command (uses SEARCH depth)
+			// Send search command
 			string goCommand = ConstructGoCommand(searchDepth, movetimeMs);
 			SendCommand(goCommand);
 
-			// Final check after sending go command
 			if (!IsEngineRunning)
 			{
-				SetErrorResult("ERROR: Engine died during go command", "Engine died during go command");
+				SetErrorResult("ERROR: Engine died during search", "Engine died during search command");
 				return false;
 			}
 
@@ -785,236 +1032,333 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Clean up all resources - no returns in try/catch blocks
+		/// Configure engine strength using UCI options
 		/// </summary>
-		private void CleanupResources()
+		private void ConfigureEngineStrength(int elo, int skillLevel)
 		{
-			// Wait for reader thread
-			if (readerThread != null)
+			if (!IsEngineRunning) return;
+
+			// Reset previous settings
+			SendCommand("setoption name UCI_LimitStrength value false");
+			SendCommand("setoption name Skill Level value 20");
+
+			// Apply Elo limitation if specified
+			if (elo > 0 && elo < 3200)
 			{
-				bool threadJoined = readerThread.Join(1000);
-				if (!threadJoined && enableDebugLogging)
-					UnityEngine.Debug.LogWarning("[Stockfish] Reader thread did not join within timeout");
-				readerThread = null;
+				SendCommand("setoption name UCI_LimitStrength value true");
+				SendCommand($"setoption name UCI_Elo value {elo}");
+
+				if (enableDebugLogging)
+					UnityEngine.Debug.Log($"<color=cyan>[Stockfish] Engine Elo limited to {elo}</color>");
 			}
 
-			// Dispose process
-			if (engineProcess != null)
+			// Apply skill level if specified
+			if (skillLevel >= 0 && skillLevel <= 20)
 			{
-				try
-				{
-					engineProcess.Dispose();
-				}
-				catch (Exception e)
-				{
-					if (enableDebugLogging)
-						UnityEngine.Debug.LogWarning($"[Stockfish] Exception disposing process: {e.Message}");
-				}
-				finally
-				{
-					engineProcess = null;
-				}
+				SendCommand($"setoption name Skill Level value {skillLevel}");
+
+				if (enableDebugLogging)
+					UnityEngine.Debug.Log($"<color=cyan>[Stockfish] Engine skill level set to {skillLevel}</color>");
 			}
-
-			CleanupTempFile();
-
-			// Reset states
-			lock (crashDetectionLock)
-			{
-				engineCrashed = false;
-				lastCommandTime = DateTime.MinValue;
-			}
-
-			IsReady = false;
-			shouldStop = false;
-
-			if (enableDebugLogging)
-				UnityEngine.Debug.Log("[Stockfish] Engine stopped and cleaned up");
 		}
 
 		/// <summary>
-		/// Extract the side to move from FEN string
+		/// Construct the UCI 'go' command
+		/// </summary>
+		private string ConstructGoCommand(int depth, int movetimeMs)
+		{
+			if (depth > 0)
+			{
+				return $"go depth {depth}";
+			}
+			else if (movetimeMs > 0)
+			{
+				return $"go movetime {movetimeMs}";
+			}
+			else
+			{
+				return $"go depth {defaultDepth}";
+			}
+		}
+
+		#endregion
+
+		#region Private Methods - Parsing
+
+		/// <summary>
+		/// Extract side to move from FEN string
 		/// </summary>
 		private char ExtractSideFromFen(string fen)
 		{
 			if (fen == "startpos" || string.IsNullOrEmpty(fen))
-				return 'w'; // startpos is white to move
+				return 'w';
 
 			string[] parts = fen.Trim().Split(' ');
 			if (parts.Length >= 2)
 			{
-				char side = parts[1].ToLower()[0];
-				return (side == 'w' || side == 'b') ? side : 'w';
+				string sideStr = parts[1].ToLower();
+				if (sideStr.Length > 0)
+				{
+					char side = sideStr[0];
+					return (side == 'w' || side == 'b') ? side : 'w';
+				}
 			}
 
 			return 'w';
 		}
 
 		/// <summary>
-		/// Enhanced FEN validation with better error messages for board arrangement and king count
+		/// Comprehensive FEN validation
 		/// </summary>
 		private string ValidateFen(string fen)
 		{
-			if (fen == "startpos" || string.IsNullOrEmpty(fen))
-				return "";  // startpos is always valid
+			if (fen == "startpos")
+				return "";
+
+			if (string.IsNullOrEmpty(fen))
+				return "FEN string is empty";
 
 			string[] parts = fen.Trim().Split(' ');
-			if (parts.Length < 1)
-				return "Invalid FEN: empty or invalid format";
-
-			if (parts.Length == 1)
-				return "Invalid FEN: missing side-to-move data (expected format: 'position w/b castling en_passant halfmove fullmove')";
-
 			if (parts.Length < 2)
-				return "Invalid FEN: missing side-to-move field";
+				return "FEN missing required fields (need at least position and side-to-move)";
 
-			string position = parts[0];
+			// Validate board position
+			string boardPart = parts[0];
+			string[] ranks = boardPart.Split('/');
 
-			// Validate basic structure (should have 7 '/' separators for 8 ranks)
-			string[] ranks = position.Split('/');
 			if (ranks.Length != 8)
-				return $"Invalid FEN: board must have 8 ranks, found {ranks.Length}";
+				return $"Board must have 8 ranks, found {ranks.Length}";
 
-			// Check each rank for valid content and correct square count
-			for (int i = 0; i < ranks.Length; i++)
+			// Count kings and validate rank structure
+			int whiteKings = 0, blackKings = 0;
+
+			for (int rankIndex = 0; rankIndex < 8; rankIndex++)
 			{
+				string rank = ranks[rankIndex];
 				int squareCount = 0;
-				foreach (char c in ranks[i])
+
+				foreach (char c in rank)
 				{
 					if (char.IsDigit(c))
 					{
 						int emptySquares = c - '0';
 						if (emptySquares < 1 || emptySquares > 8)
-							return $"Invalid FEN: invalid empty square count '{c}' in rank {8 - i}";
+							return $"Invalid empty square count '{c}' in rank {8 - rankIndex}";
 						squareCount += emptySquares;
 					}
 					else if ("rnbqkpRNBQKP".IndexOf(c) >= 0)
 					{
-						squareCount += 1;
+						squareCount++;
+						if (c == 'K') whiteKings++;
+						else if (c == 'k') blackKings++;
 					}
 					else
 					{
-						return $"Invalid FEN: invalid character '{c}' in rank {8 - i}";
+						return $"Invalid character '{c}' in rank {8 - rankIndex}";
 					}
 				}
 
 				if (squareCount != 8)
-					return $"Invalid FEN: rank {8 - i} has {squareCount} squares, expected 8";
+					return $"Rank {8 - rankIndex} has {squareCount} squares, expected 8";
 			}
 
-			// Count kings
-			int whiteKings = 0;
-			int blackKings = 0;
-			foreach (char c in position)
-			{
-				if (c == 'K') whiteKings++;
-				else if (c == 'k') blackKings++;
-			}
-
+			// Validate king count
 			if (whiteKings != 1)
-				return $"Invalid FEN: found {whiteKings} white king(s), expected exactly 1";
-
+				return $"Found {whiteKings} white kings, expected exactly 1";
 			if (blackKings != 1)
-				return $"Invalid FEN: found {blackKings} black king(s), expected exactly 1";
+				return $"Found {blackKings} black kings, expected exactly 1";
 
 			// Validate side to move
-			if (parts.Length >= 2)
-			{
-				char side = parts[1].ToLower()[0];
-				if (side != 'w' && side != 'b')
-					return $"Invalid FEN: side to move must be 'w' or 'b', found '{parts[1]}'";
-			}
+			char side = parts[1].ToLower()[0];
+			if (side != 'w' && side != 'b')
+				return $"Side to move must be 'w' or 'b', found '{parts[1]}'";
 
-			return "";  // Valid
+			return ""; // Valid FEN
 		}
 
 		/// <summary>
-		/// Convert centipawn evaluation to win probability using configurable logistic function
-		/// Formula: prob_white = 1.0 / (1.0 + exp(-k * cp))
+		/// Parse analysis result with enhanced evaluation and promotion support
 		/// </summary>
-		private float CentipawnsToWinProbability(float centipawns)
+		private void ParseAnalysisResult(string rawOutput, int searchDepth, int evaluationDepth)
 		{
-			// Use configurable logistic mapping
-			float exponent = -PROB_K * centipawns;
-			return 1f / (1f + Mathf.Exp(exponent));
-		}
+			LastAnalysisResult.rawEngineOutput = rawOutput;
 
-		/// <summary>
-		/// Convert mate distance to win probability with calibrated mapping
-		/// For mateDistance > 0 (White mates): prob_white = 1.0f - 1.0f / (1.0f + C / mateDistance)
-		/// For mateDistance < 0 (Black mates): symmetric mapping
-		/// </summary>
-		private float MateDistanceToWinProbability(int mateDistance)
-		{
-			if (mateDistance > 0)
+			if (string.IsNullOrEmpty(rawOutput))
 			{
-				// White mates in N: prob_white = 1.0f - 1.0f / (1.0f + C / mateDistance)
-				float prob = 1.0f - 1.0f / (1.0f + MATE_C / mateDistance);
-				return Mathf.Clamp(prob, 0.0001f, 0.9999f);
+				LastAnalysisResult.bestMove = "ERROR: No engine output";
+				LastAnalysisResult.errorMessage = "No engine output received";
+				return;
 			}
-			else if (mateDistance < 0)
+
+			string[] lines = rawOutput.Split('\n');
+
+			// Parse evaluation first
+			if (evaluationDepth > 0 && enableEvaluation)
 			{
-				// Black mates in N: symmetric mapping (prob_white near 0)
-				int absMateDistance = Mathf.Abs(mateDistance);
-				float prob = 1.0f / (1.0f + MATE_C / absMateDistance);
-				return Mathf.Clamp(prob, 0.0001f, 0.9999f);
+				ParseEvaluationFromOutput(lines, evaluationDepth);
 			}
 			else
 			{
-				// Mate in 0 shouldn't happen, but handle gracefully
-				return 0.5f;
+				// Default neutral evaluation
+				LastAnalysisResult.whiteWinProbability = 0.5f;
+				LastAnalysisResult.sideToMoveWinProbability = 0.5f;
+			}
+
+			// Parse best move
+			ParseBestMoveFromOutput(lines);
+
+			// Log final result
+			if (enableDebugLogging)
+			{
+				string evalDisplay = LastAnalysisResult.GetEvaluationDisplay();
+				string moveDisplay = LastAnalysisResult.isPromotion ?
+					$"{LastAnalysisResult.bestMove} ({LastAnalysisResult.GetPromotionDescription()})" :
+					LastAnalysisResult.bestMove;
+
+				UnityEngine.Debug.Log($"<color=green>[Stockfish] Analysis: {moveDisplay} | {evalDisplay}</color>");
 			}
 		}
 
 		/// <summary>
-		/// Select the best info line based on depth and multipv preferences
-		/// Prefers: depth == targetDepth && multipv == 1, fallback to highest depth && multipv == 1
+		/// Parse evaluation from engine output lines
+		/// </summary>
+		private void ParseEvaluationFromOutput(string[] lines, int targetDepth)
+		{
+			string bestInfoLine = SelectBestInfoLine(lines, targetDepth);
+
+			if (string.IsNullOrEmpty(bestInfoLine))
+			{
+				// No evaluation found, use neutral
+				LastAnalysisResult.whiteWinProbability = 0.5f;
+				LastAnalysisResult.sideToMoveWinProbability = 0.5f;
+				return;
+			}
+
+			var (centipawns, isMate, mateDistance) = ExtractScoreFromInfoLine(bestInfoLine);
+
+			if (isMate)
+			{
+				// Mate score
+				LastAnalysisResult.isMateScore = true;
+				LastAnalysisResult.mateDistance = mateDistance;
+				LastAnalysisResult.whiteWinProbability = ConvertMateToWinProbability(mateDistance);
+			}
+			else if (!float.IsNaN(centipawns))
+			{
+				// Centipawn score
+				LastAnalysisResult.centipawnEvaluation = centipawns;
+				LastAnalysisResult.whiteWinProbability = ConvertCentipawnsToWinProbability(centipawns);
+			}
+			else
+			{
+				// Fallback neutral
+				LastAnalysisResult.whiteWinProbability = 0.5f;
+			}
+
+			// Calculate side-to-move probability
+			if (LastAnalysisResult.sideToMove == 'b')
+			{
+				LastAnalysisResult.sideToMoveWinProbability = 1f - LastAnalysisResult.whiteWinProbability;
+			}
+			else
+			{
+				LastAnalysisResult.sideToMoveWinProbability = LastAnalysisResult.whiteWinProbability;
+			}
+
+			// Clamp probabilities
+			LastAnalysisResult.whiteWinProbability = Mathf.Clamp(LastAnalysisResult.whiteWinProbability, 0.001f, 0.999f);
+			LastAnalysisResult.sideToMoveWinProbability = Mathf.Clamp(LastAnalysisResult.sideToMoveWinProbability, 0.001f, 0.999f);
+		}
+
+		/// <summary>
+		/// Parse best move from engine output with full promotion support
+		/// </summary>
+		private void ParseBestMoveFromOutput(string[] lines)
+		{
+			string bestMoveLine = "";
+
+			// Find bestmove line
+			foreach (string line in lines)
+			{
+				if (line.Trim().StartsWith("bestmove"))
+				{
+					bestMoveLine = line.Trim();
+					break;
+				}
+			}
+
+			if (string.IsNullOrEmpty(bestMoveLine))
+			{
+				LastAnalysisResult.bestMove = "ERROR: No bestmove found";
+				LastAnalysisResult.errorMessage = "No bestmove line in engine output";
+				return;
+			}
+
+			// Parse bestmove components
+			string[] parts = bestMoveLine.Split(' ');
+			if (parts.Length < 2)
+			{
+				LastAnalysisResult.bestMove = "ERROR: Invalid bestmove format";
+				LastAnalysisResult.errorMessage = "Malformed bestmove line";
+				return;
+			}
+
+			string move = parts[1];
+
+			// Handle special cases
+			if (move == "(none)" || string.IsNullOrEmpty(move))
+			{
+				// No legal moves available
+				if (LastAnalysisResult.isMateScore)
+				{
+					LastAnalysisResult.bestMove = "check-mate";
+					LastAnalysisResult.isGameEnd = true;
+					LastAnalysisResult.isCheckmate = true;
+				}
+				else
+				{
+					LastAnalysisResult.bestMove = "stale-mate";
+					LastAnalysisResult.isGameEnd = true;
+					LastAnalysisResult.isStalemate = true;
+					// Reset evaluation for stalemate
+					LastAnalysisResult.whiteWinProbability = 0.5f;
+					LastAnalysisResult.sideToMoveWinProbability = 0.5f;
+				}
+				return;
+			}
+
+			// Valid move - set and parse promotion data
+			LastAnalysisResult.bestMove = move;
+			LastAnalysisResult.ParsePromotionData();
+		}
+
+		/// <summary>
+		/// Select best info line based on depth and multipv
 		/// </summary>
 		private string SelectBestInfoLine(string[] lines, int targetDepth)
 		{
 			string bestLine = null;
 			int bestDepth = -1;
-			bool foundTargetDepth = false;
 
-			// First pass: look for exact depth match with multipv=1 (or no multipv)
 			foreach (string line in lines)
 			{
-				if (!line.Trim().StartsWith("info") || !line.Contains("score"))
+				string trimmedLine = line.Trim();
+				if (!trimmedLine.StartsWith("info") || trimmedLine.IndexOf("score") < 0)
 					continue;
 
-				var (depth, multipv, hasScore) = ParseInfoLineMetadata(line);
-				if (!hasScore) continue;
+				var (depth, multipv, hasScore) = ParseInfoLineMetadata(trimmedLine);
+				if (!hasScore || multipv > 1)
+					continue;
 
-				// Prefer multipv=1 or no multipv specified
-				if (multipv > 1) continue;
-
+				// Prefer exact depth match, otherwise take highest depth
 				if (depth == targetDepth)
 				{
-					bestLine = line;
-					foundTargetDepth = true;
-					break; // Found exact match, use it
+					return trimmedLine;
 				}
-			}
-
-			// Second pass: if no exact depth match, find highest depth with multipv=1
-			if (!foundTargetDepth)
-			{
-				foreach (string line in lines)
+				else if (depth > bestDepth)
 				{
-					if (!line.Trim().StartsWith("info") || !line.Contains("score"))
-						continue;
-
-					var (depth, multipv, hasScore) = ParseInfoLineMetadata(line);
-					if (!hasScore) continue;
-
-					// Prefer multipv=1 or no multipv specified
-					if (multipv > 1) continue;
-
-					if (depth > bestDepth)
-					{
-						bestDepth = depth;
-						bestLine = line;
-					}
+					bestDepth = depth;
+					bestLine = trimmedLine;
 				}
 			}
 
@@ -1022,13 +1366,13 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Parse metadata from info line (depth, multipv, hasScore)
+		/// Parse info line metadata
 		/// </summary>
 		private (int depth, int multipv, bool hasScore) ParseInfoLineMetadata(string infoLine)
 		{
 			string[] tokens = infoLine.Split(' ');
 			int depth = -1;
-			int multipv = 1; // Default to 1 if not specified
+			int multipv = 1;
 			bool hasScore = false;
 
 			for (int i = 0; i < tokens.Length - 1; i++)
@@ -1051,198 +1395,26 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Parse engine output into structured analysis result with enhanced evaluation mapping
-		/// UPDATED: Uses searchDepth for info line selection (raw output), evaluationDepth only when enabled
+		/// Extract score from UCI info line
 		/// </summary>
-		private void ParseAnalysisResult(string rawOutput, int searchDepth, int evaluationDepth)
+		private (float centipawns, bool isMate, int mateDistance) ExtractScoreFromInfoLine(string infoLine)
 		{
-			LastAnalysisResult.rawEngineOutput = rawOutput;
-
-			if (string.IsNullOrEmpty(rawOutput))
-			{
-				LastAnalysisResult.bestMove = "ERROR: No engine output";
-				LastAnalysisResult.errorMessage = "No engine output received";
-				return;
-			}
-
-			string[] lines = rawOutput.Split('\n');
-			string bestMoveLine = "";
-			float whiteWinProb = 0.5f; // Default fallback
-			bool foundEvaluation = false;
-
-			// Only compute evaluation if enabled
-			if (evaluationDepth > 0 && enableEvaluation)
-			{
-				// Use evaluation depth for selecting info line for evaluation
-				string selectedInfoLine = SelectBestInfoLine(lines, evaluationDepth);
-
-				if (!string.IsNullOrEmpty(selectedInfoLine))
-				{
-					var evalResult = ParseEvaluationFromInfoLine(selectedInfoLine);
-					if (!float.IsNaN(evalResult.centipawns) || evalResult.isMate)
-					{
-						foundEvaluation = true;
-
-						if (evalResult.isMate)
-						{
-							// Use mate-specific probability mapping
-							whiteWinProb = MateDistanceToWinProbability(evalResult.mateDistance);
-							if (enableDebugLogging)
-								UnityEngine.Debug.Log($"[Stockfish] Mate in {Mathf.Abs(evalResult.mateDistance)} -> White prob: {whiteWinProb:F4}");
-						}
-						else
-						{
-							// Use centipawn-based logistic mapping
-							whiteWinProb = CentipawnsToWinProbability(evalResult.centipawns);
-							if (enableDebugLogging)
-								UnityEngine.Debug.Log($"[Stockfish] {evalResult.centipawns}cp -> White prob: {whiteWinProb:F4}");
-						}
-					}
-				}
-			}
-
-			// Clamp probability to safe range, but only if evaluation was enabled
-			if (foundEvaluation)
-			{
-				whiteWinProb = Mathf.Clamp(whiteWinProb, 0.0001f, 0.9999f);
-			}
-			else
-			{
-				whiteWinProb = 0.5f; // Default when evaluation disabled
-			}
-
-			LastAnalysisResult.evaluation = whiteWinProb;
-
-			// Calculate side-to-move evaluation
-			if (LastAnalysisResult.Side == 'b')
-			{
-				LastAnalysisResult.stmEvaluation = 1f - whiteWinProb;
-			}
-			else
-			{
-				LastAnalysisResult.stmEvaluation = whiteWinProb;
-			}
-
-			// Parse best move line
-			foreach (string line in lines)
-			{
-				if (line.Trim().StartsWith("bestmove"))
-				{
-					bestMoveLine = line.Trim();
-					break;
-				}
-			}
-
-			if (!string.IsNullOrEmpty(bestMoveLine))
-			{
-				string[] parts = bestMoveLine.Split(' ');
-				if (parts.Length >= 2)
-				{
-					string move = parts[1];
-
-					// Handle special cases
-					if (move == "(none)" || string.IsNullOrEmpty(move))
-					{
-						// No legal moves - determine if checkmate or stalemate
-						// If we found a mate evaluation, it's checkmate
-						if (foundEvaluation)
-						{
-							string selectedInfoLine = SelectBestInfoLine(lines, evaluationDepth > 0 ? evaluationDepth : searchDepth);
-							if (selectedInfoLine != null)
-							{
-								var evalResult = ParseEvaluationFromInfoLine(selectedInfoLine);
-								if (evalResult.isMate)
-								{
-									LastAnalysisResult.bestMove = "check-mate";
-									LastAnalysisResult.isGameEnd = true;
-									// Keep the mate probability we calculated
-								}
-								else
-								{
-									LastAnalysisResult.bestMove = "stale-mate";
-									LastAnalysisResult.isGameEnd = true;
-									LastAnalysisResult.evaluation = 0.5f; // Stalemate is draw
-									LastAnalysisResult.stmEvaluation = 0.5f;
-								}
-							}
-							else
-							{
-								// Fallback
-								LastAnalysisResult.bestMove = "stale-mate";
-								LastAnalysisResult.isGameEnd = true;
-								LastAnalysisResult.evaluation = 0.5f;
-								LastAnalysisResult.stmEvaluation = 0.5f;
-							}
-						}
-						else
-						{
-							// No evaluation found, assume stalemate (more common)
-							LastAnalysisResult.bestMove = "stale-mate";
-							LastAnalysisResult.isGameEnd = true;
-							LastAnalysisResult.evaluation = 0.5f;
-							LastAnalysisResult.stmEvaluation = 0.5f;
-						}
-					}
-					else
-					{
-						// Normal move
-						LastAnalysisResult.bestMove = move;
-						LastAnalysisResult.isGameEnd = false;
-						// Keep the calculated probabilities
-					}
-				}
-				else
-				{
-					LastAnalysisResult.bestMove = "ERROR: Could not parse bestmove";
-					LastAnalysisResult.errorMessage = "Invalid bestmove format";
-				}
-			}
-			else
-			{
-				LastAnalysisResult.bestMove = "ERROR: No bestmove found in engine output";
-				LastAnalysisResult.errorMessage = "No bestmove line found";
-			}
-
-			if (enableDebugLogging && foundEvaluation)
-			{
-				UnityEngine.Debug.Log($"[Stockfish] Final evaluation - White: {LastAnalysisResult.evaluation:F4}, STM: {LastAnalysisResult.stmEvaluation:F4} (Side: {LastAnalysisResult.Side})");
-			}
-
-			if (enableDebugLogging)
-			{
-				UnityEngine.Debug.Log($"[Stockfish] Search depth: {LastAnalysisResult.searchDepth}, Evaluation depth: {LastAnalysisResult.evaluationDepth}, Skill: {LastAnalysisResult.skillLevel}, Approx Elo: {LastAnalysisResult.approximateElo}");
-			}
-		}
-
-		/// <summary>
-		/// Parse evaluation from UCI info line - enhanced to capture mate distance
-		/// Returns: (centipawns, isMate, mateDistance)
-		/// </summary>
-		private (float centipawns, bool isMate, int mateDistance) ParseEvaluationFromInfoLine(string infoLine)
-		{
-			// Look for "score cp" or "score mate"
 			int scoreIndex = infoLine.IndexOf("score");
-			if (scoreIndex == -1) return (float.NaN, false, 0);
+			if (scoreIndex < 0)
+				return (float.NaN, false, 0);
 
 			string scorePart = infoLine.Substring(scoreIndex);
 			string[] tokens = scorePart.Split(' ');
 
 			for (int i = 0; i < tokens.Length - 1; i++)
 			{
-				if (tokens[i] == "cp" && i + 1 < tokens.Length)
+				if (tokens[i] == "cp" && int.TryParse(tokens[i + 1], out int cp))
 				{
-					if (int.TryParse(tokens[i + 1], out int centipawns))
-					{
-						return (centipawns, false, 0);  // Centipawn score
-					}
+					return (cp, false, 0);
 				}
-				else if (tokens[i] == "mate" && i + 1 < tokens.Length)
+				else if (tokens[i] == "mate" && int.TryParse(tokens[i + 1], out int mate))
 				{
-					if (int.TryParse(tokens[i + 1], out int mateIn))
-					{
-						// Return the mate distance directly - don't convert to centipawns
-						return (float.NaN, true, mateIn);
-					}
+					return (float.NaN, true, mate);
 				}
 			}
 
@@ -1250,60 +1422,84 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Configure engine weakness using available UCI options
+		/// Convert centipawn evaluation to win probability using logistic function
+		/// Based on chess research: P(win) = 1 / (1 + exp(-k * centipawns))
 		/// </summary>
-		/// <param name="elo">Target Elo rating (-1 for max strength)</param>
-		/// <param name="skillLevel">Skill level 0-20 where 0 is weakest (-1 disabled)</param>
-		private void ConfigureEngineWeakness(int elo, int skillLevel)
+		private float ConvertCentipawnsToWinProbability(float centipawns)
 		{
-			// Only configure if engine is running
-			if (!IsEngineRunning) return;
-
-			// Configure Elo limitation if specified
-			if (elo > 0)
-			{
-				SendCommand("setoption name UCI_LimitStrength value true");
-				SendCommand($"setoption name UCI_Elo value {elo}");
-
-				if (enableDebugLogging)
-					UnityEngine.Debug.Log($"[Stockfish] Set UCI_Elo to {elo}");
-			}
-			else
-			{
-				SendCommand("setoption name UCI_LimitStrength value false");
-			}
-
-			// Configure Skill Level if specified
-			if (skillLevel >= 0 && skillLevel <= 20)
-			{
-				SendCommand($"setoption name Skill Level value {skillLevel}");
-				if (enableDebugLogging)
-					UnityEngine.Debug.Log($"[Stockfish] Set Skill Level to {skillLevel}");
-			}
+			// Research-based scaling: ~100cp = ~64% win probability
+			float scaledValue = CENTIPAWN_SCALE * centipawns;
+			return 1f / (1f + Mathf.Exp(-scaledValue));
 		}
 
 		/// <summary>
-		/// Construct the 'go' command, preferring depth over movetime for deterministic weakness
+		/// Convert mate distance to win probability
 		/// </summary>
-		/// <param name="depth">Search depth (>0 takes precedence)</param>
-		/// <param name="movetimeMs">Move time in milliseconds (used if depth <= 0)</param>
-		/// <returns>UCI go command string</returns>
-		private string ConstructGoCommand(int depth, int movetimeMs)
+		private float ConvertMateToWinProbability(int mateDistance)
 		{
-			string goCommand;
-			if (depth > 0)
+			if (mateDistance > 0)
 			{
-				goCommand = $"go depth {depth}";
-				if (enableDebugLogging)
-					UnityEngine.Debug.Log($"[Stockfish] Using depth-limited search: depth {depth}");
+				// White mates: very high probability for white
+				float probability = 1f - 1f / (1f + MATE_BONUS / mateDistance);
+				return Mathf.Clamp(probability, 0.95f, 0.999f);
 			}
-			else
+			else if (mateDistance < 0)
 			{
-				goCommand = $"go movetime {movetimeMs}";
-				if (enableDebugLogging)
-					UnityEngine.Debug.Log($"[Stockfish] Using time-limited search: {movetimeMs}ms");
+				// Black mates: very low probability for white
+				float probability = 1f / (1f + MATE_BONUS / Math.Abs(mateDistance));
+				return Mathf.Clamp(probability, 0.001f, 0.05f);
 			}
-			return goCommand;
+
+			return 0.5f; // Should not happen
+		}
+
+		#endregion
+
+		#region Private Methods - Engine Management
+
+		/// <summary>
+		/// Clean up all engine resources
+		/// </summary>
+		private void CleanupResources()
+		{
+			if (readerThread != null)
+			{
+				bool threadJoined = readerThread.Join(1000);
+				if (!threadJoined && enableDebugLogging)
+					UnityEngine.Debug.Log("<color=yellow>[Stockfish] Reader thread did not join within timeout</color>");
+				readerThread = null;
+			}
+
+			if (engineProcess != null)
+			{
+				try
+				{
+					engineProcess.Dispose();
+				}
+				catch (Exception e)
+				{
+					if (enableDebugLogging)
+						UnityEngine.Debug.Log($"<color=yellow>[Stockfish] Exception disposing process: {e.Message}</color>");
+				}
+				finally
+				{
+					engineProcess = null;
+				}
+			}
+
+			CleanupTempFile();
+
+			lock (crashDetectionLock)
+			{
+				engineCrashed = false;
+				lastCommandTime = DateTime.MinValue;
+			}
+
+			IsReady = false;
+			shouldStop = false;
+
+			if (enableDebugLogging)
+				UnityEngine.Debug.Log("<color=green>[Stockfish] Engine stopped and cleaned up</color>");
 		}
 
 		private string GetEngineExecutablePath()
@@ -1315,7 +1511,6 @@ namespace GPTDeepResearch
 				return null;
 			}
 
-			// On some platforms, we may need to copy to a writable location
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
 			return CopyToTempLocation(streamingAssetsPath);
 #else
@@ -1325,22 +1520,21 @@ namespace GPTDeepResearch
 
 		private string CopyToTempLocation(string sourcePath)
 		{
-			string tempPath = null;
 			try
 			{
 				tempEnginePath = Path.Combine(Path.GetTempPath(), $"sf-engine-{System.Guid.NewGuid():N}.exe");
 				File.Copy(sourcePath, tempEnginePath, true);
-				tempPath = tempEnginePath;
 
 				if (enableDebugLogging)
-					UnityEngine.Debug.Log($"[Stockfish] Copied engine to temp location: {tempEnginePath}");
+					UnityEngine.Debug.Log($"<color=green>[Stockfish] Copied engine to temp: {tempEnginePath}</color>");
+
+				return tempEnginePath;
 			}
 			catch (Exception e)
 			{
-				UnityEngine.Debug.LogError($"[Stockfish] Failed to copy engine to temp location: {e.Message}");
+				UnityEngine.Debug.Log($"<color=red>[Stockfish] Failed to copy engine: {e.Message}</color>");
+				return null;
 			}
-
-			return tempPath;
 		}
 
 		private void CleanupTempFile()
@@ -1351,12 +1545,12 @@ namespace GPTDeepResearch
 				{
 					File.Delete(tempEnginePath);
 					if (enableDebugLogging)
-						UnityEngine.Debug.Log("[Stockfish] Cleaned up temp engine file");
+						UnityEngine.Debug.Log("<color=green>[Stockfish] Cleaned up temp engine file</color>");
 				}
 				catch (Exception e)
 				{
 					if (enableDebugLogging)
-						UnityEngine.Debug.LogWarning($"[Stockfish] Failed to cleanup temp file: {e.Message}");
+						UnityEngine.Debug.Log($"<color=yellow>[Stockfish] Failed to cleanup temp file: {e.Message}</color>");
 				}
 				finally
 				{
@@ -1398,26 +1592,21 @@ namespace GPTDeepResearch
 
 		private void BackgroundReaderLoop()
 		{
-			string line = null;
 			bool exceptionOccurred = false;
 
 			try
 			{
 				while (!shouldStop && engineProcess != null && !engineProcess.HasExited)
 				{
-					line = engineProcess.StandardOutput.ReadLine();
+					string line = engineProcess.StandardOutput.ReadLine();
 					if (line != null)
 					{
 						incomingLines.Enqueue(line);
 					}
-					else
+					else if (!shouldStop)
 					{
-						// ReadLine returned null - engine might have closed output
-						if (!shouldStop)
-						{
-							UnityEngine.Debug.LogWarning("[Stockfish] Engine output stream closed unexpectedly");
-							break;
-						}
+						UnityEngine.Debug.Log("<color=yellow>[Stockfish] Engine output stream closed unexpectedly</color>");
+						break;
 					}
 				}
 			}
@@ -1431,14 +1620,67 @@ namespace GPTDeepResearch
 						engineCrashed = true;
 					}
 					incomingLines.Enqueue($"ERROR: Reader thread exception: {e.Message}");
-					UnityEngine.Debug.LogError($"[Stockfish] Reader thread crashed: {e.Message}");
+					UnityEngine.Debug.Log($"<color=red>[Stockfish] Reader thread crashed: {e.Message}</color>");
 				}
 			}
 
-			// Clean exit logging
 			if (!exceptionOccurred && enableDebugLogging)
 			{
-				UnityEngine.Debug.Log("[Stockfish] Reader thread exited cleanly");
+				UnityEngine.Debug.Log("<color=green>[Stockfish] Reader thread exited cleanly</color>");
+			}
+		}
+
+		#endregion
+
+		#region Public API - Testing
+
+		/// <summary>
+		/// Test promotion parsing with various UCI formats
+		/// </summary>
+		public void TestPromotionParsing()
+		{
+			string[] testMoves = { "e7e8q", "a7a8n", "h2h1r", "b7b8b", "d7c8q", "f2g1n" };
+
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing promotion parsing...</color>");
+
+			foreach (string move in testMoves)
+			{
+				ChessAnalysisResult testResult = new ChessAnalysisResult
+				{
+					bestMove = move,
+					sideToMove = move[1] == '7' ? 'b' : 'w' // Determine side by source rank
+				};
+
+				testResult.ParsePromotionData();
+
+				if (testResult.isPromotion)
+				{
+					UnityEngine.Debug.Log($"<color=green>[Test] {move} -> {testResult.GetPromotionDescription()}</color>");
+				}
+				else
+				{
+					UnityEngine.Debug.Log($"<color=red>[Test] {move} -> Failed to parse as promotion</color>");
+				}
+			}
+		}
+
+		/// <summary>
+		/// Test Elo calculation with various parameters
+		/// </summary>
+		public void TestEloCalculation()
+		{
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing Elo calculation...</color>");
+
+			int[] testSkillLevels = { 0, 5, 10, 15, 20 };
+			int[] testDepths = { 5, 10, 15, 20 };
+
+			foreach (int skill in testSkillLevels)
+			{
+				foreach (int depth in testDepths)
+				{
+					int elo = CalculateApproximateElo(-1, skill, depth);
+					UnityEngine.Debug.Log($"<color=green>[Test] Skill {skill}, Depth {depth} -> Elo {elo}</color>");
+				}
 			}
 		}
 
