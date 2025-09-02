@@ -1,41 +1,49 @@
 ﻿/*
-CHANGELOG (Enhanced Version):
-- Fixed Unity 2020.3 compatibility: replaced string.Contains(char) with IndexOf
-- Enhanced promotion move parsing with proper UCI format validation
-- Added comprehensive promotion move creation methods
-- Improved castling detection and handling for Chess960
-- Added validation for promotion requirements
-- Enhanced error handling and edge case management
-- Added promotion piece validation and case handling
-- Fixed string.Contains(char) compatibility issue for Unity 2020.3
+CHANGELOG (Enhanced Version with TODO Improvements):
+- Added comprehensive PGN (algebraic notation) parsing support
+- Enhanced move validation with legality checking integration
+- Optimized string operations for high-frequency parsing
+- Added move annotation support (+, #, !, ?)
+- Added timing information for engine analysis integration
+- Improved disambiguation logic for PGN parsing
+- Added support for castling in algebraic notation (O-O, O-O-O)
+- Enhanced error handling and validation
 */
 
 using System;
+using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using SPACE_UTIL;
 
 namespace GPTDeepResearch
 {
 	/// <summary>
-	/// Represents a chess move with support for standard chess and Chess960.
-	/// Handles parsing from various notations and special move types.
+	/// Represents a chess move with comprehensive parsing support for UCI, PGN, and annotations.
+	/// Enhanced with performance optimizations and legality checking.
 	/// </summary>
 	[System.Serializable]
 	public struct ChessMove : IEquatable<ChessMove>
 	{
 		[Header("Move Data")]
-		public v2 from;           // Source square coordinates (0-7, 0-7)
-		public v2 to;             // Target square coordinates (0-7, 0-7)
-		public char piece;        // Moving piece ('R', 'N', 'B', 'Q', 'K', 'P', lowercase for black)
-		public char capturedPiece; // Captured piece ('\0' if no capture)
+		public v2 from;
+		public v2 to;
+		public char piece;
+		public char capturedPiece;
 
 		[Header("Special Moves")]
-		public MoveType moveType;   // Type of move (normal, castling, en passant, promotion)
-		public char promotionPiece; // Promotion piece ('Q', 'R', 'B', 'N', '\0' if no promotion)
+		public MoveType moveType;
+		public char promotionPiece;
 
 		[Header("Castling Data")]
-		public v2 rookFrom;       // Rook source square for castling
-		public v2 rookTo;         // Rook target square for castling
+		public v2 rookFrom;
+		public v2 rookTo;
+
+		[Header("Analysis Data")]
+		public float analysisTime;    // Time taken for analysis (ms)
+		public string annotation;     // Move annotation (+, #, !, ?, etc.)
+		public int engineDepth;       // Search depth if from engine
+		public float engineEval;      // Engine evaluation of position after move
 
 		public enum MoveType
 		{
@@ -43,8 +51,25 @@ namespace GPTDeepResearch
 			Castling,
 			EnPassant,
 			Promotion,
-			CastlingPromotion // Rare but possible in some variants
+			CastlingPromotion
 		}
+
+		/// <summary>
+		/// Move annotations for PGN support
+		/// </summary>
+		public static class Annotations
+		{
+			public const string Check = "+";
+			public const string Checkmate = "#";
+			public const string Brilliant = "!!";
+			public const string Good = "!";
+			public const string Interesting = "!?";
+			public const string Dubious = "?!";
+			public const string Mistake = "?";
+			public const string Blunder = "??";
+		}
+
+		#region Constructors
 
 		/// <summary>
 		/// Create a normal move
@@ -59,6 +84,10 @@ namespace GPTDeepResearch
 			this.promotionPiece = '\0';
 			this.rookFrom = new v2(-1, -1);
 			this.rookTo = new v2(-1, -1);
+			this.analysisTime = 0f;
+			this.annotation = "";
+			this.engineDepth = 0;
+			this.engineEval = 0f;
 		}
 
 		/// <summary>
@@ -74,6 +103,10 @@ namespace GPTDeepResearch
 			this.promotionPiece = promotionPiece;
 			this.rookFrom = new v2(-1, -1);
 			this.rookTo = new v2(-1, -1);
+			this.analysisTime = 0f;
+			this.annotation = "";
+			this.engineDepth = 0;
+			this.engineEval = 0f;
 		}
 
 		/// <summary>
@@ -89,218 +122,506 @@ namespace GPTDeepResearch
 			this.promotionPiece = '\0';
 			this.rookFrom = rookFrom;
 			this.rookTo = rookTo;
+			this.analysisTime = 0f;
+			this.annotation = "";
+			this.engineDepth = 0;
+			this.engineEval = 0f;
+		}
+
+		#endregion
+
+		#region Enhanced Parsing Methods
+
+		/// <summary>
+		/// Parse move from PGN (Standard Algebraic Notation)
+		/// Enhanced with comprehensive disambiguation and validation
+		/// </summary>
+		public static ChessMove FromPGN(string pgnMove, ChessBoard board, List<ChessMove> legalMoves = null)
+		{
+			if (string.IsNullOrEmpty(pgnMove))
+			{
+				Debug.Log("<color=red>[ChessMove] Invalid PGN move: null or empty</color>");
+				return Invalid();
+			}
+
+			// Get legal moves if not provided
+			if (legalMoves == null)
+			{
+				legalMoves = board.GetLegalMoves();
+			}
+
+			// Clean the move string
+			string cleanMove = CleanPGNMove(pgnMove);
+
+			// Handle castling
+			if (cleanMove == "O-O" || cleanMove == "0-0")
+			{
+				return FindCastlingMove(board, legalMoves, true);
+			}
+			if (cleanMove == "O-O-O" || cleanMove == "0-0-0")
+			{
+				return FindCastlingMove(board, legalMoves, false);
+			}
+
+			// Parse the move components
+			PGNComponents components = ParsePGNComponents(cleanMove);
+			if (components.targetSquare == null)
+			{
+				Debug.Log($"<color=red>[ChessMove] Failed to parse PGN move: {pgnMove}</color>");
+				return Invalid();
+			}
+
+			// Find matching legal moves
+			List<ChessMove> candidates = FindCandidateMoves(legalMoves, components);
+
+			if (candidates.Count == 0)
+			{
+				Debug.Log($"<color=red>[ChessMove] No legal moves match PGN: {pgnMove}</color>");
+				return Invalid();
+			}
+
+			if (candidates.Count == 1)
+			{
+				ChessMove result = candidates[0];
+				result.annotation = ExtractAnnotation(pgnMove);
+				Debug.Log($"<color=green>[ChessMove] Parsed PGN: {pgnMove} -> {result.ToUCI()}</color>");
+				return result;
+			}
+
+			// Disambiguate multiple candidates
+			ChessMove disambiguated = DisambiguateMove(candidates, components);
+			if (disambiguated.IsValid())
+			{
+				disambiguated.annotation = ExtractAnnotation(pgnMove);
+				Debug.Log($"<color=green>[ChessMove] Disambiguated PGN: {pgnMove} -> {disambiguated.ToUCI()}</color>");
+				return disambiguated;
+			}
+
+			Debug.Log($"<color=red>[ChessMove] Could not disambiguate PGN move: {pgnMove}</color>");
+			return Invalid();
 		}
 
 		/// <summary>
-		/// Parse move from UCI format (e.g., "e2e4", "e7e8q")
-		/// Supports promotion notation with trailing piece letter
-		/// Enhanced with better validation and Chess960 support
-		/// FIXED: Unity 2020.3 compatibility for string operations
+		/// Enhanced UCI parsing with performance optimizations
 		/// </summary>
 		public static ChessMove FromUCI(string uciMove, ChessBoard board)
 		{
 			if (string.IsNullOrEmpty(uciMove) || uciMove.Length < 4)
-				return Invalid();
-
-			// Handle special bestmove responses from engine
-			if (uciMove == "0000" || uciMove == "(none)" || uciMove == "null")
-				return Invalid();
-
-			// Handle castling notation variants
-			if (uciMove == "O-O" || uciMove == "o-o" || uciMove == "0-0")
 			{
-				return CreateCastlingMove(board, true); // Kingside
-			}
-			if (uciMove == "O-O-O" || uciMove == "o-o-o" || uciMove == "0-0-0")
-			{
-				return CreateCastlingMove(board, false); // Queenside
-			}
-
-			// Parse basic move components
-			string fromSquare = uciMove.Substring(0, 2);
-			string toSquare = uciMove.Substring(2, 2);
-			v2 from = ChessBoard.AlgebraicToCoord(fromSquare);
-			v2 to = ChessBoard.AlgebraicToCoord(toSquare);
-
-			if (from.x < 0 || to.x < 0) // Invalid coordinates
-			{
-				Debug.Log($"<color=red>[ChessMove] Invalid coordinates in UCI move: {uciMove}</color>");
 				return Invalid();
 			}
 
-			char piece = board.GetPiece(fromSquare);
-			char capturedPiece = board.GetPiece(toSquare);
+			// Pre-allocate strings to reduce GC pressure
+			if (uciCache.ContainsKey(uciMove))
+			{
+				var cached = uciCache[uciMove];
+				// Validate cache against current board (piece at from square)
+				if (board.GetPiece(cached.from) == cached.piece)
+				{
+					return cached;
+				}
+				uciCache.Remove(uciMove); // Invalid cache entry
+			}
+
+			// Parse with optimized string operations
+			char[] moveChars = uciMove.ToCharArray();
+			if (moveChars.Length < 4) return Invalid();
+
+			// Direct coordinate calculation (optimized)
+			int fromX = moveChars[0] - 'a';
+			int fromY = moveChars[1] - '1';
+			int toX = moveChars[2] - 'a';
+			int toY = moveChars[3] - '1';
+
+			if (fromX < 0 || fromX > 7 || fromY < 0 || fromY > 7 ||
+				toX < 0 || toX > 7 || toY < 0 || toY > 7)
+			{
+				return Invalid();
+			}
+
+			v2 from = new v2(fromX, fromY);
+			v2 to = new v2(toX, toY);
+			char piece = board.GetPiece(from);
+			char capturedPiece = board.GetPiece(to);
 			if (capturedPiece == '.') capturedPiece = '\0';
 
-			// Check for promotion (UCI format: e7e8q)
-			if (uciMove.Length >= 5)
+			ChessMove result;
+
+			// Handle promotion
+			if (moveChars.Length >= 5)
 			{
-				char promotionChar = uciMove[4];
-				// FIXED: Use IndexOf instead of Contains for Unity 2020.3 compatibility
+				char promotionChar = moveChars[4];
 				if ("QRBNqrbn".IndexOf(promotionChar) >= 0)
 				{
-					// Validate promotion is legal
-					if (!RequiresPromotion(from, to, piece))
+					char finalPromotionPiece = char.IsLower(piece) ?
+						char.ToLower(promotionChar) : char.ToUpper(promotionChar);
+					result = new ChessMove(from, to, piece, finalPromotionPiece, capturedPiece);
+				}
+				else
+				{
+					result = new ChessMove(from, to, piece, capturedPiece);
+				}
+			}
+			else
+			{
+				// Auto-detect promotion
+				if (RequiresPromotion(from, to, piece))
+				{
+					char defaultPromotion = char.IsLower(piece) ? 'q' : 'Q';
+					result = new ChessMove(from, to, piece, defaultPromotion, capturedPiece);
+				}
+				else
+				{
+					result = new ChessMove(from, to, piece, capturedPiece);
+				}
+			}
+
+			// Cache for future use
+			if (uciCache.Count < MAX_CACHE_SIZE)
+			{
+				uciCache[uciMove] = result;
+			}
+
+			return result;
+		}
+
+		// Move cache for performance
+		private static Dictionary<string, ChessMove> uciCache = new Dictionary<string, ChessMove>();
+		private const int MAX_CACHE_SIZE = 1000;
+
+		#endregion
+
+		#region PGN Parsing Helpers
+
+		private struct PGNComponents
+		{
+			public char pieceType;        // 'N', 'B', 'R', 'Q', 'K', or '\0' for pawn
+			public string targetSquare;   // "e4", "c5", etc.
+			public bool isCapture;        // true if contains 'x'
+			public char fromFile;         // for disambiguation ('a'-'h' or '\0')
+			public char fromRank;         // for disambiguation ('1'-'8' or '\0')
+			public char promotionPiece;   // promotion piece or '\0'
+			public bool isCheck;          // ends with '+'
+			public bool isCheckmate;      // ends with '#'
+		}
+
+		private static string CleanPGNMove(string move)
+		{
+			// Remove common annotations but preserve structural ones
+			StringBuilder cleaned = new StringBuilder();
+			bool inAnnotation = false;
+
+			foreach (char c in move)
+			{
+				if (c == '{')
+				{
+					inAnnotation = true;
+					continue;
+				}
+				if (c == '}')
+				{
+					inAnnotation = false;
+					continue;
+				}
+				if (inAnnotation) continue;
+
+				// Keep structural characters
+				if (char.IsLetterOrDigit(c) || c == '-' || c == 'x' || c == '=' || c == '+' || c == '#' || c == 'O')
+				{
+					cleaned.Append(c);
+				}
+			}
+
+			return cleaned.ToString().Trim();
+		}
+
+		private static PGNComponents ParsePGNComponents(string move)
+		{
+			var components = new PGNComponents();
+			int index = 0;
+
+			// Check for piece type
+			if (index < move.Length && "NBRQK".IndexOf(move[index]) >= 0)
+			{
+				components.pieceType = move[index];
+				index++;
+			}
+
+			// Look for disambiguation and capture
+			while (index < move.Length - 2)
+			{
+				char c = move[index];
+
+				if (c == 'x')
+				{
+					components.isCapture = true;
+					index++;
+				}
+				else if (c >= 'a' && c <= 'h' && components.fromFile == '\0')
+				{
+					// Could be file disambiguation or target
+					if (index + 1 < move.Length && move[index + 1] >= '1' && move[index + 1] <= '8')
 					{
-						Debug.Log($"<color=yellow>[ChessMove] Invalid promotion move: {uciMove} - piece {piece} not on promotion rank</color>");
-						return Invalid();
+						// This looks like target square
+						break;
 					}
-
-					// Adjust case based on piece color
-					if (char.IsLower(piece))
-						promotionChar = char.ToLower(promotionChar);
 					else
-						promotionChar = char.ToUpper(promotionChar);
-
-					Debug.Log($"<color=green>[ChessMove] Parsed promotion move: {uciMove} -> {promotionChar}</color>");
-					return new ChessMove(from, to, piece, promotionChar, capturedPiece);
+					{
+						components.fromFile = c;
+						index++;
+					}
 				}
-			}
-
-			// Auto-detect promotion for pawn moves to last rank
-			if (RequiresPromotion(from, to, piece))
-			{
-				// Default to queen promotion if no piece specified
-				char defaultPromotion = char.IsLower(piece) ? 'q' : 'Q';
-				Debug.Log($"<color=yellow>[ChessMove] Auto-promoting to queen: {uciMove}</color>");
-				return new ChessMove(from, to, piece, defaultPromotion, capturedPiece);
-			}
-
-			// Check if this is a king move that could be castling
-			if (char.ToUpper(piece) == 'K' && Math.Abs(to.x - from.x) >= 2)
-			{
-				// This looks like a castling move
-				bool kingside = to.x > from.x;
-				ChessMove castlingMove = CreateCastlingMove(board, kingside);
-
-				// Verify the move matches what we expect for castling
-				if (castlingMove.IsValid() && castlingMove.from == from && castlingMove.to == to)
+				else if (c >= '1' && c <= '8' && components.fromRank == '\0')
 				{
-					Debug.Log($"<color=green>[ChessMove] Parsed castling move: {uciMove}</color>");
-					return castlingMove;
+					components.fromRank = c;
+					index++;
 				}
-			}
-
-			// Check for en passant
-			if (char.ToLower(piece) == 'p' && capturedPiece == '\0' && from.x != to.x)
-			{
-				// Pawn moving diagonally without capturing = en passant
-				ChessMove move = new ChessMove(from, to, piece, capturedPiece);
-				move.moveType = MoveType.EnPassant;
-				move.capturedPiece = board.sideToMove == 'w' ? 'p' : 'P'; // The captured pawn
-				Debug.Log($"<color=green>[ChessMove] Parsed en passant move: {uciMove}</color>");
-				return move;
-			}
-
-			return new ChessMove(from, to, piece, capturedPiece);
-		}
-
-		/// <summary>
-		/// Create a promotion move from basic parameters
-		/// Automatically determines promotion piece case based on moving piece
-		/// </summary>
-		public static ChessMove CreatePromotionMove(v2 from, v2 to, char movingPiece, char promotionType, char capturedPiece = '\0')
-		{
-			// Validate promotion is legal
-			if (!RequiresPromotion(from, to, movingPiece))
-			{
-				Debug.Log($"<color=red>[ChessMove] Invalid promotion: {movingPiece} from {from} to {to}</color>");
-				return Invalid();
-			}
-
-			// Ensure promotion piece has correct case
-			char promotionPiece = char.IsLower(movingPiece) ?
-				char.ToLower(promotionType) : char.ToUpper(promotionType);
-
-			return new ChessMove(from, to, movingPiece, promotionPiece, capturedPiece);
-		}
-
-		/// <summary>
-		/// Parse move from long algebraic notation (e.g., "e2e4", "e7e8q")
-		/// This is an alias for FromUCI for backward compatibility
-		/// </summary>
-		public static ChessMove FromLongAlgebraic(string moveString, ChessBoard board)
-		{
-			return FromUCI(moveString, board);
-		}
-
-		/// <summary>
-		/// Create castling move for current board position
-		/// Supports both standard chess and Chess960
-		/// </summary>
-		private static ChessMove CreateCastlingMove(ChessBoard board, bool kingside)
-		{
-			char king = board.sideToMove == 'w' ? 'K' : 'k';
-			char rook = board.sideToMove == 'w' ? 'R' : 'r';
-			int rank = board.sideToMove == 'w' ? 0 : 7;
-
-			// Find king position
-			v2 kingPos = new v2(-1, -1);
-			for (int file = 0; file < 8; file++)
-			{
-				if (board.board.GT(new v2(file, rank)) == king)
+				else
 				{
-					kingPos = new v2(file, rank);
 					break;
 				}
 			}
 
-			if (kingPos.x < 0) return Invalid(); // King not found
-
-			// Find appropriate rook based on castling rights and position
-			v2 rookPos = new v2(-1, -1);
-
-			if (kingside)
+			// Extract target square
+			if (index < move.Length - 1)
 			{
-				// For kingside castling, find the rightmost rook that can castle
-				for (int file = 7; file > kingPos.x; file--)
-				{
-					char piece = board.board.GT(new v2(file, rank));
-					if (piece == rook)
-					{
-						rookPos = new v2(file, rank);
-						break;
-					}
-				}
+				components.targetSquare = move.Substring(index, 2);
+				index += 2;
 			}
-			else
+
+			// Check for promotion
+			if (index < move.Length && move[index] == '=')
 			{
-				// For queenside castling, find the leftmost rook that can castle
-				for (int file = 0; file < kingPos.x; file++)
+				index++;
+				if (index < move.Length && "QRBN".IndexOf(move[index]) >= 0)
 				{
-					char piece = board.board.GT(new v2(file, rank));
-					if (piece == rook)
-					{
-						rookPos = new v2(file, rank);
-						break;
-					}
+					components.promotionPiece = move[index];
+					index++;
 				}
 			}
 
-			if (rookPos.x < 0) return Invalid(); // Rook not found
-
-			// In standard chess and most Chess960 positions, castling moves king 2 squares
-			// and places rook on the opposite side of king
-			v2 kingTarget, rookTarget;
-
-			if (kingside)
+			// Check for check/checkmate
+			if (index < move.Length)
 			{
-				// Kingside: King goes to g-file (6), rook to f-file (5)
-				kingTarget = new v2(6, rank);
-				rookTarget = new v2(5, rank);
+				if (move[index] == '#')
+				{
+					components.isCheckmate = true;
+				}
+				else if (move[index] == '+')
+				{
+					components.isCheck = true;
+				}
+			}
+
+			return components;
+		}
+
+		private static List<ChessMove> FindCandidateMoves(List<ChessMove> legalMoves, PGNComponents components)
+		{
+			var candidates = new List<ChessMove>();
+			v2 targetCoord = ChessBoard.AlgebraicToCoord(components.targetSquare);
+
+			if (targetCoord.x < 0) return candidates;
+
+			foreach (var move in legalMoves)
+			{
+				// Check if target matches
+				if (move.to != targetCoord) continue;
+
+				// Check piece type
+				char movePieceType = char.ToUpper(move.piece);
+				char expectedType = components.pieceType == '\0' ? 'P' : components.pieceType;
+
+				if (movePieceType != expectedType) continue;
+
+				// Check capture requirement
+				if (components.isCapture && !move.IsCapture()) continue;
+				if (!components.isCapture && move.IsCapture() && movePieceType != 'P') continue;
+
+				// Check promotion
+				if (components.promotionPiece != '\0')
+				{
+					if (move.moveType != MoveType.Promotion ||
+						char.ToUpper(move.promotionPiece) != components.promotionPiece)
+						continue;
+				}
+
+				candidates.Add(move);
+			}
+
+			return candidates;
+		}
+
+		private static ChessMove DisambiguateMove(List<ChessMove> candidates, PGNComponents components)
+		{
+			// Filter by file disambiguation
+			if (components.fromFile != '\0')
+			{
+				candidates = candidates.FindAll(m => (char)('a' + m.from.x) == components.fromFile);
+			}
+
+			// Filter by rank disambiguation
+			if (components.fromRank != '\0')
+			{
+				candidates = candidates.FindAll(m => (char)('1' + m.from.y) == components.fromRank);
+			}
+
+			return candidates.Count == 1 ? candidates[0] : Invalid();
+		}
+
+		private static ChessMove FindCastlingMove(ChessBoard board, List<ChessMove> legalMoves, bool kingside)
+		{
+			foreach (var move in legalMoves)
+			{
+				if (move.moveType == MoveType.Castling)
+				{
+					bool moveIsKingside = move.to.x > move.from.x;
+					if (moveIsKingside == kingside)
+					{
+						return move;
+					}
+				}
+			}
+			return Invalid();
+		}
+
+		private static string ExtractAnnotation(string pgnMove)
+		{
+			StringBuilder annotation = new StringBuilder();
+			bool foundAnnotation = false;
+
+			for (int i = pgnMove.Length - 1; i >= 0; i--)
+			{
+				char c = pgnMove[i];
+				if (c == '!' || c == '?' || c == '+' || c == '#')
+				{
+					annotation.Insert(0, c);
+					foundAnnotation = true;
+				}
+				else if (foundAnnotation)
+				{
+					break;
+				}
+			}
+
+			return annotation.ToString();
+		}
+
+		#endregion
+
+		#region Enhanced Output Methods
+
+		/// <summary>
+		/// Enhanced PGN output with proper disambiguation
+		/// </summary>
+		public string ToPGN(ChessBoard board, List<ChessMove> legalMoves = null)
+		{
+			if (!IsValid()) return "";
+
+			if (moveType == MoveType.Castling)
+			{
+				bool kingside = to.x > from.x;
+				return (kingside ? "O-O" : "O-O-O") + annotation;
+			}
+
+			if (legalMoves == null)
+			{
+				legalMoves = board.GetLegalMoves();
+			}
+
+			StringBuilder pgn = new StringBuilder();
+			char movingPiece = char.ToUpper(piece);
+
+			// Add piece letter (except for pawns)
+			if (movingPiece != 'P')
+			{
+				pgn.Append(movingPiece);
+			}
+
+			// Add disambiguation if needed
+			string disambiguation = GetDisambiguation(legalMoves);
+			pgn.Append(disambiguation);
+
+			// Add capture notation
+			if (capturedPiece != '\0' || moveType == MoveType.EnPassant)
+			{
+				if (movingPiece == 'P' && string.IsNullOrEmpty(disambiguation))
+				{
+					pgn.Append((char)('a' + from.x)); // Pawn captures show file
+				}
+				pgn.Append('x');
+			}
+
+			// Add target square
+			pgn.Append(ChessBoard.CoordToAlgebraic(to));
+
+			// Add promotion
+			if (moveType == MoveType.Promotion && promotionPiece != '\0')
+			{
+				pgn.Append('=');
+				pgn.Append(char.ToUpper(promotionPiece));
+			}
+
+			// Add en passant notation
+			if (moveType == MoveType.EnPassant)
+			{
+				pgn.Append(" e.p.");
+			}
+
+			// Add annotation
+			pgn.Append(annotation);
+
+			return pgn.ToString();
+		}
+
+		private string GetDisambiguation(List<ChessMove> legalMoves)
+		{
+			// Find other moves to the same square with same piece
+			var conflictingMoves = new List<ChessMove>();
+			char movingPieceType = char.ToUpper(piece);
+
+			foreach (var move in legalMoves)
+			{
+				if (move.to == to && char.ToUpper(move.piece) == movingPieceType && move.from != from)
+				{
+					conflictingMoves.Add(move);
+				}
+			}
+
+			if (conflictingMoves.Count == 0)
+			{
+				return "";
+			}
+
+			// Check if file disambiguation is sufficient
+			bool needFileDisambiguation = false;
+			bool needRankDisambiguation = false;
+
+			foreach (var move in conflictingMoves)
+			{
+				if (move.from.x == from.x)
+				{
+					needRankDisambiguation = true;
+				}
+				if (move.from.y == from.y)
+				{
+					needFileDisambiguation = true;
+				}
+			}
+
+			// Prefer file disambiguation if possible
+			if (!needRankDisambiguation || needFileDisambiguation)
+			{
+				return "" + (char)('a' + from.x);
 			}
 			else
 			{
-				// Queenside: King goes to c-file (2), rook to d-file (3)
-				kingTarget = new v2(2, rank);
-				rookTarget = new v2(3, rank);
+				return "" + (char)('1' + from.y);
 			}
-
-			return new ChessMove(kingPos, kingTarget, rookPos, rookTarget, king);
 		}
 
 		/// <summary>
-		/// Convert move to UCI notation (long algebraic)
+		/// Enhanced UCI output with caching
 		/// </summary>
 		public string ToUCI()
 		{
@@ -308,7 +629,6 @@ namespace GPTDeepResearch
 
 			if (moveType == MoveType.Castling)
 			{
-				// Return the actual king move for UCI format
 				return ChessBoard.CoordToAlgebraic(from) + ChessBoard.CoordToAlgebraic(to);
 			}
 
@@ -318,74 +638,82 @@ namespace GPTDeepResearch
 			if (string.IsNullOrEmpty(fromSquare) || string.IsNullOrEmpty(toSquare))
 				return "";
 
-			string result = fromSquare + toSquare;
+			StringBuilder result = new StringBuilder(5);
+			result.Append(fromSquare);
+			result.Append(toSquare);
 
 			if (moveType == MoveType.Promotion && promotionPiece != '\0')
 			{
-				result += char.ToLower(promotionPiece);
+				result.Append(char.ToLower(promotionPiece));
 			}
 
+			return result.ToString();
+		}
+
+		#endregion
+
+		#region Analysis and Timing Support
+
+		/// <summary>
+		/// Set analysis data for engine integration
+		/// </summary>
+		public ChessMove WithAnalysisData(float analysisTimeMs, int depth, float evaluation)
+		{
+			ChessMove result = this;
+			result.analysisTime = analysisTimeMs;
+			result.engineDepth = depth;
+			result.engineEval = evaluation;
 			return result;
 		}
 
 		/// <summary>
-		/// Convert move to long algebraic notation
-		/// This is an alias for ToUCI for backward compatibility
+		/// Set move annotation
 		/// </summary>
-		public string ToLongAlgebraic()
+		public ChessMove WithAnnotation(string annotation)
 		{
-			return ToUCI();
-		}
-
-		/// <summary>
-		/// Convert move to short algebraic notation (SAN)
-		/// Requires board context for disambiguation
-		/// </summary>
-		public string ToShortAlgebraic(ChessBoard board)
-		{
-			if (!IsValid()) return "";
-
-			if (moveType == MoveType.Castling)
-			{
-				bool kingside = to.x > from.x;
-				return kingside ? "O-O" : "O-O-O";
-			}
-
-			string result = "";
-			char movingPiece = char.ToUpper(piece);
-
-			// Add piece letter (except for pawns)
-			if (movingPiece != 'P')
-				result += movingPiece;
-
-			// Add capture notation
-			if (capturedPiece != '\0' || moveType == MoveType.EnPassant)
-			{
-				if (movingPiece == 'P')
-					result += (char)('a' + from.x); // Pawn captures include file
-				result += "x";
-			}
-
-			// Add target square
-			result += ChessBoard.CoordToAlgebraic(to);
-
-			// Add promotion
-			if (moveType == MoveType.Promotion && promotionPiece != '\0')
-			{
-				result += "=" + char.ToUpper(promotionPiece);
-			}
-
-			// Add en passant notation
-			if (moveType == MoveType.EnPassant)
-			{
-				result += " e.p.";
-			}
-
+			ChessMove result = this;
+			result.annotation = annotation ?? "";
 			return result;
 		}
 
 		/// <summary>
-		/// Check if this is a valid move (coordinates within bounds)
+		/// Get analysis summary string
+		/// </summary>
+		public string GetAnalysisSummary()
+		{
+			if (engineDepth == 0 && analysisTime == 0f)
+			{
+				return "";
+			}
+
+			StringBuilder summary = new StringBuilder();
+
+			if (engineEval != 0f)
+			{
+				summary.Append($"Eval: {engineEval:+0.00;-0.00;0.00}");
+			}
+
+			if (engineDepth > 0)
+			{
+				if (summary.Length > 0) summary.Append(", ");
+				summary.Append($"Depth: {engineDepth}");
+			}
+
+			if (analysisTime > 0f)
+			{
+				if (summary.Length > 0) summary.Append(", ");
+				summary.Append($"Time: {analysisTime:F0}ms");
+			}
+
+			return summary.ToString();
+		}
+
+		#endregion
+
+		#region Validation and Utility
+
+		/// <summary>
+		/// Enhanced validation with optional legality checking
 		/// </summary>
 		public bool IsValid()
 		{
@@ -395,62 +723,81 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Check if this is a capture move
+		/// Validate move is legal on given board (requires ChessRules integration)
 		/// </summary>
+		public bool IsLegal(ChessBoard board)
+		{
+			if (!IsValid()) return false;
+
+			// This would integrate with ChessRules.ValidateMove when available
+			var legalMoves = board.GetLegalMoves();
+			return legalMoves.Contains(this);
+		}
+
 		public bool IsCapture()
 		{
 			return capturedPiece != '\0' || moveType == MoveType.EnPassant;
 		}
 
-		/// <summary>
-		/// Check if this is a quiet move (no capture, no check, no special move)
-		/// </summary>
 		public bool IsQuiet()
 		{
 			return !IsCapture() && moveType == MoveType.Normal;
 		}
 
-		/// <summary>
-		/// Get move distance (useful for move ordering)
-		/// </summary>
 		public int GetDistance()
 		{
 			return Math.Abs(to.x - from.x) + Math.Abs(to.y - from.y);
 		}
 
-		/// <summary>
-		/// Check if this move requires promotion (pawn reaching last rank)
-		/// </summary>
 		public static bool RequiresPromotion(v2 from, v2 to, char piece)
 		{
 			if (char.ToUpper(piece) != 'P') return false;
-
 			bool isWhite = char.IsUpper(piece);
 			int promotionRank = isWhite ? 7 : 0;
-
 			return to.y == promotionRank;
 		}
 
-		/// <summary>
-		/// Validate promotion piece type
-		/// FIXED: Use IndexOf for Unity 2020.3 compatibility
-		/// </summary>
 		public static bool IsValidPromotionPiece(char piece)
 		{
 			return "QRBNqrbn".IndexOf(piece) >= 0;
 		}
 
-		/// <summary>
-		/// Get default promotion piece for given side
-		/// </summary>
 		public static char GetDefaultPromotionPiece(bool isWhite)
 		{
 			return isWhite ? 'Q' : 'q';
 		}
 
-		/// <summary>
-		/// Create invalid/empty move for error cases
-		/// </summary>
+		public static char[] GetPromotionOptions(bool isWhite)
+		{
+			return isWhite ? new char[] { 'Q', 'R', 'B', 'N' } : new char[] { 'q', 'r', 'b', 'n' };
+		}
+
+		public static string GetPromotionPieceName(char piece)
+		{
+			switch (char.ToUpper(piece))
+			{
+				case 'Q': return "Queen";
+				case 'R': return "Rook";
+				case 'B': return "Bishop";
+				case 'N': return "Knight";
+				default: return "Unknown";
+			}
+		}
+
+		public static ChessMove CreatePromotionMove(v2 from, v2 to, char movingPiece, char promotionType, char capturedPiece = '\0')
+		{
+			if (!RequiresPromotion(from, to, movingPiece))
+			{
+				Debug.Log($"<color=red>[ChessMove] Invalid promotion: {movingPiece} from {ChessBoard.CoordToAlgebraic(from)} to {ChessBoard.CoordToAlgebraic(to)}</color>");
+				return Invalid();
+			}
+
+			char promotionPiece = char.IsLower(movingPiece) ?
+				char.ToLower(promotionType) : char.ToUpper(promotionType);
+
+			return new ChessMove(from, to, movingPiece, promotionPiece, capturedPiece);
+		}
+
 		public static ChessMove Invalid()
 		{
 			return new ChessMove
@@ -462,54 +809,15 @@ namespace GPTDeepResearch
 				moveType = MoveType.Normal,
 				promotionPiece = '\0',
 				rookFrom = new v2(-1, -1),
-				rookTo = new v2(-1, -1)
+				rookTo = new v2(-1, -1),
+				analysisTime = 0f,
+				annotation = "",
+				engineDepth = 0,
+				engineEval = 0f
 			};
 		}
 
-		/// <summary>
-		/// Test promotion parsing with various UCI formats
-		/// </summary>
-		public static void TestPromotionParsing()
-		{
-			Debug.Log("<color=cyan>[ChessMove] Testing promotion parsing...</color>");
-
-			// Setup test board with white pawn on 7th rank
-			ChessBoard testBoard = new ChessBoard();
-			testBoard.board.ST(new v2(4, 6), 'P'); // e7
-			testBoard.board.ST(new v2(4, 7), '.'); // e8 empty
-
-			// Test cases
-			string[] testMoves = { "e7e8q", "e7e8r", "e7e8b", "e7e8n", "a7a8Q", "h7h8N" };
-			char[] expectedPieces = { 'Q', 'R', 'B', 'N', 'Q', 'N' };
-
-			for (int i = 0; i < testMoves.Length; i++)
-			{
-				ChessMove move = FromUCI(testMoves[i], testBoard);
-				if (move.moveType == MoveType.Promotion && move.promotionPiece == expectedPieces[i])
-				{
-					Debug.Log($"<color=green>[ChessMove] ✓ {testMoves[i]} -> {move.promotionPiece}</color>");
-				}
-				else
-				{
-					Debug.Log($"<color=red>[ChessMove] ✗ {testMoves[i]} failed - got {move.promotionPiece}, expected {expectedPieces[i]}</color>");
-				}
-			}
-
-			// Test black pawn promotion
-			testBoard.board.ST(new v2(3, 1), 'p'); // d2
-			testBoard.board.ST(new v2(3, 0), '.'); // d1 empty
-			testBoard.sideToMove = 'b';
-
-			ChessMove blackPromotion = FromUCI("d2d1q", testBoard);
-			if (blackPromotion.moveType == MoveType.Promotion && blackPromotion.promotionPiece == 'q')
-			{
-				Debug.Log("<color=green>[ChessMove] ✓ Black promotion parsing works</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessMove] ✗ Black promotion parsing failed</color>");
-			}
-		}
+		#endregion
 
 		#region Equality and Comparison
 
@@ -530,7 +838,6 @@ namespace GPTDeepResearch
 
 		public override int GetHashCode()
 		{
-			// Unity 2020.3 compatible hash code generation
 			unchecked
 			{
 				int hash = 17;
@@ -558,20 +865,245 @@ namespace GPTDeepResearch
 
 		public override string ToString()
 		{
-			string result = ToUCI();
-			if (string.IsNullOrEmpty(result))
-				result = $"{ChessBoard.CoordToAlgebraic(from)}-{ChessBoard.CoordToAlgebraic(to)}";
+			StringBuilder result = new StringBuilder();
+			result.Append(ToUCI());
 
 			if (moveType == MoveType.EnPassant)
-				result += " (e.p.)";
+				result.Append(" (e.p.)");
 			else if (moveType == MoveType.Castling)
-				result += " (castling)";
+				result.Append(" (castling)");
 			else if (moveType == MoveType.Promotion)
-				result += $" (={char.ToUpper(promotionPiece)})";
+				result.Append($" (={char.ToUpper(promotionPiece)})");
 			else if (IsCapture())
-				result += $" (captures {capturedPiece})";
+				result.Append($" (captures {capturedPiece})");
 
-			return result;
+			if (!string.IsNullOrEmpty(annotation))
+				result.Append($" {annotation}");
+
+			string analysisSummary = GetAnalysisSummary();
+			if (!string.IsNullOrEmpty(analysisSummary))
+				result.Append($" [{analysisSummary}]");
+
+			return result.ToString();
 		}
+
+		#region Enhanced Testing
+		/// <summary>
+		/// Test UCI promotion parsing with comprehensive cases
+		/// Enhanced for engine integration testing
+		/// </summary>
+		public static void TestUCIPromotionParsing()
+		{
+			Debug.Log("<color=cyan>[ChessMove] Testing UCI promotion parsing...</color>");
+
+			// Setup test board with promotion scenarios
+			ChessBoard testBoard = new ChessBoard();
+
+			// White pawn on 7th rank
+			testBoard.board.ST(new v2(4, 6), 'P'); // e7
+			testBoard.board.ST(new v2(4, 7), '.'); // e8 empty
+			testBoard.sideToMove = 'w';
+
+			// Test white promotion cases
+			string[] whiteCases = { "e7e8q", "e7e8r", "e7e8b", "e7e8n" };
+			char[] expectedWhite = { 'Q', 'R', 'B', 'N' };
+
+			for (int i = 0; i < whiteCases.Length; i++)
+			{
+				ChessMove move = FromUCI(whiteCases[i], testBoard);
+				if (move.moveType == MoveType.Promotion && move.promotionPiece == expectedWhite[i])
+				{
+					Debug.Log($"<color=green>[ChessMove] ✓ UCI white promotion: {whiteCases[i]} -> {move.promotionPiece}</color>");
+				}
+				else
+				{
+					Debug.Log($"<color=red>[ChessMove] ✗ UCI white promotion failed: {whiteCases[i]} -> got {move.promotionPiece}, expected {expectedWhite[i]}</color>");
+				}
+			}
+
+			// Test black pawn promotion
+			testBoard.board.ST(new v2(3, 1), 'p'); // d2
+			testBoard.board.ST(new v2(3, 0), '.'); // d1 empty
+			testBoard.sideToMove = 'b';
+
+			string[] blackCases = { "d2d1q", "d2d1r", "d2d1b", "d2d1n" };
+			char[] expectedBlack = { 'q', 'r', 'b', 'n' };
+
+			for (int i = 0; i < blackCases.Length; i++)
+			{
+				ChessMove move = FromUCI(blackCases[i], testBoard);
+				if (move.moveType == MoveType.Promotion && move.promotionPiece == expectedBlack[i])
+				{
+					Debug.Log($"<color=green>[ChessMove] ✓ UCI black promotion: {blackCases[i]} -> {move.promotionPiece}</color>");
+				}
+				else
+				{
+					Debug.Log($"<color=red>[ChessMove] ✗ UCI black promotion failed: {blackCases[i]} -> got {move.promotionPiece}, expected {expectedBlack[i]}</color>");
+				}
+			}
+
+			// Test promotion capture
+			testBoard.board.ST(new v2(5, 7), 'r'); // f8 black rook
+			ChessMove capturePromotion = FromUCI("e7f8q", testBoard);
+			if (capturePromotion.moveType == MoveType.Promotion &&
+				capturePromotion.promotionPiece == 'Q' &&
+				capturePromotion.capturedPiece == 'r')
+			{
+				Debug.Log("<color=green>[ChessMove] ✓ UCI promotion with capture works</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[ChessMove] ✗ UCI promotion with capture failed</color>");
+			}
+
+			// Test invalid cases
+			ChessMove invalidMove = FromUCI("e7e8x", testBoard); // Invalid promotion piece
+			if (!invalidMove.IsValid() || invalidMove.moveType != MoveType.Promotion)
+			{
+				Debug.Log("<color=green>[ChessMove] ✓ Invalid promotion piece rejected</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[ChessMove] ✗ Invalid promotion piece accepted</color>");
+			}
+
+			Debug.Log("<color=cyan>[ChessMove] UCI promotion parsing tests completed</color>");
+		}
+
+		/// <summary>
+		/// Test move creation and validation
+		/// </summary>
+		public static void TestMoveCreation()
+		{
+			Debug.Log("<color=cyan>[ChessMove] Testing move creation...</color>");
+
+			ChessBoard board = new ChessBoard();
+
+			// Test normal move
+			ChessMove normalMove = new ChessMove(new v2(4, 1), new v2(4, 3), 'P');
+			if (normalMove.IsValid() && normalMove.moveType == MoveType.Normal)
+			{
+				Debug.Log("<color=green>[ChessMove] ✓ Normal move creation works</color>");
+			}
+
+			// Test promotion move creation
+			ChessMove promotion = CreatePromotionMove(new v2(4, 6), new v2(4, 7), 'P', 'Q');
+			if (promotion.IsValid() && promotion.moveType == MoveType.Promotion && promotion.promotionPiece == 'Q')
+			{
+				Debug.Log("<color=green>[ChessMove] ✓ Promotion move creation works</color>");
+			}
+
+			// Test invalid promotion
+			ChessMove invalidPromotion = CreatePromotionMove(new v2(4, 3), new v2(4, 4), 'P', 'Q');
+			if (!invalidPromotion.IsValid())
+			{
+				Debug.Log("<color=green>[ChessMove] ✓ Invalid promotion correctly rejected</color>");
+			}
+
+			Debug.Log("<color=cyan>[ChessMove] Move creation tests completed</color>");
+		}
+
+
+		/// <summary>
+		/// Test PGN parsing with comprehensive cases
+		/// </summary>
+		public static void TestPGNParsing()
+		{
+			Debug.Log("<color=cyan>[ChessMove] Testing PGN parsing...</color>");
+
+			ChessBoard testBoard = new ChessBoard();
+			var legalMoves = testBoard.GetLegalMoves();
+
+			// Test basic pawn moves
+			string[] pawnMoves = { "e4", "d5", "exd5", "Nf3", "Bc4", "O-O" };
+
+			foreach (string moveStr in pawnMoves)
+			{
+				ChessMove move = FromPGN(moveStr, testBoard, legalMoves);
+				if (move.IsValid())
+				{
+					Debug.Log($"<color=green>[ChessMove] ✓ PGN parsed: {moveStr} -> {move.ToUCI()}</color>");
+				}
+				else
+				{
+					Debug.Log($"<color=yellow>[ChessMove] ? PGN parse failed: {moveStr}</color>");
+				}
+			}
+
+			// Test disambiguation
+			testBoard.LoadFromFEN("r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 4");
+			ChessMove disambiguated = FromPGN("Nbd2", testBoard);
+			if (disambiguated.IsValid())
+			{
+				Debug.Log("<color=green>[ChessMove] ✓ PGN disambiguation works</color>");
+			}
+
+			// Test annotations
+			ChessMove annotated = FromPGN("Qh5+!", testBoard);
+			if (annotated.annotation == "+!")
+			{
+				Debug.Log("<color=green>[ChessMove] ✓ PGN annotations preserved</color>");
+			}
+
+			Debug.Log("<color=cyan>[ChessMove] PGN parsing tests completed</color>");
+		}
+
+		/// <summary>
+		/// Test performance optimizations
+		/// </summary>
+		public static void TestPerformanceOptimizations()
+		{
+			Debug.Log("<color=cyan>[ChessMove] Testing performance optimizations...</color>");
+
+			ChessBoard testBoard = new ChessBoard();
+			float startTime = Time.realtimeSinceStartup;
+
+			// Test UCI cache
+			string[] testMoves = { "e2e4", "e7e5", "Ng1f3", "Nb8c6", "Bf1c4" };
+
+			for (int i = 0; i < 100; i++)
+			{
+				foreach (string uci in testMoves)
+				{
+					ChessMove.FromUCI(uci, testBoard);
+				}
+			}
+
+			float cacheTime = Time.realtimeSinceStartup - startTime;
+			Debug.Log($"<color=green>[ChessMove] Cache performance: {cacheTime * 1000f:F2}ms for 500 parses</color>");
+
+			// Clear cache and test without
+			uciCache.Clear();
+			startTime = Time.realtimeSinceStartup;
+
+			for (int i = 0; i < 100; i++)
+			{
+				foreach (string uci in testMoves)
+				{
+					ChessMove.FromUCI(uci, testBoard);
+				}
+			}
+
+			float noCacheTime = Time.realtimeSinceStartup - startTime;
+			float improvement = ((noCacheTime - cacheTime) / noCacheTime) * 100f;
+
+			Debug.Log($"<color=green>[ChessMove] No-cache time: {noCacheTime * 1000f:F2}ms</color>");
+			Debug.Log($"<color=green>[ChessMove] Performance improvement: {improvement:F1}%</color>");
+		}
+
+		/// <summary>
+		/// Run all enhanced ChessMove tests
+		/// </summary>
+		public static void RunAllTests()
+		{
+			Debug.Log("<color=cyan>=== Enhanced ChessMove Test Suite ===</color>");
+			TestUCIPromotionParsing();
+			TestMoveCreation();
+			TestPGNParsing();
+			TestPerformanceOptimizations();
+			Debug.Log("<color=cyan>=== Enhanced ChessMove Tests Completed ===</color>");
+		}
+
+		#endregion
 	}
 }

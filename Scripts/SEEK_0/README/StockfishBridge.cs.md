@@ -184,7 +184,8 @@ Game history maintains undo/redo stack with FEN snapshots. Crash detection monit
 - `ChessMove.cs`: FromUCI(), Invalid() for move object creation
 - `SPACE_UTIL`: v2 struct for 2D coordinates
 
-## TODO / Known limitations / Suggested improvements
+<!--
+## TODO / Known limitations / Suggested improvements (Only If explicitely mentioned in the prompt)
 
 - TODO: Add support for MultiPV analysis for move ranking
 - TODO: Implement opening book integration
@@ -194,6 +195,7 @@ Game history maintains undo/redo stack with FEN snapshots. Crash detection monit
 - Suggested: Add chess variant support (Chess960, King of the Hill)
 - Suggested: Implement pondering (background analysis during opponent's turn)
 - Suggested: Add time control management for tournament play
+-->
 
 ## Appendix
 
