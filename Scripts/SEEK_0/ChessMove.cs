@@ -30,6 +30,14 @@ namespace GPTDeepResearch
 		public v2 to;
 		public char piece;
 		public char capturedPiece;
+		public enum MoveType
+		{
+			Normal,
+			Castling,
+			EnPassant,
+			Promotion,
+			CastlingPromotion
+		}
 
 		[Header("Special Moves")]
 		public MoveType moveType;
@@ -45,14 +53,6 @@ namespace GPTDeepResearch
 		public int engineDepth;       // Search depth if from engine
 		public float engineEval;      // Engine evaluation of position after move
 
-		public enum MoveType
-		{
-			Normal,
-			Castling,
-			EnPassant,
-			Promotion,
-			CastlingPromotion
-		}
 
 		/// <summary>
 		/// Move annotations for PGN support

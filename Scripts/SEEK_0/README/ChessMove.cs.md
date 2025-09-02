@@ -1,192 +1,137 @@
-# `ChessMove.cs` — Enhanced chess move representation with PGN parsing and analysis integration
+# `ChessMove.cs` — Comprehensive chess move representation with UCI, PGN parsing and performance optimizations
 
-Comprehensive chess move structure supporting UCI, PGN (Standard Algebraic Notation) parsing with disambiguation, performance optimizations, and engine analysis integration.
+Represents chess moves with support for UCI/PGN parsing, promotion handling, move validation, and analysis data integration for high-performance chess applications.
 
 ## Short description (2–4 sentences)
-This file implements a chess move representation system with enhanced parsing capabilities for both UCI (Universal Chess Interface) and PGN (Portable Game Notation) formats. It provides comprehensive move validation, promotion handling, castling support, and analysis data integration for engine communication. The structure includes performance optimizations like move caching and supports move annotations, timing information, and detailed equality comparison.
+Implements a complete chess move structure supporting UCI notation, PGN (algebraic notation) parsing, and comprehensive move validation. Provides enhanced promotion move handling, castling support, and move annotation system for chess analysis integration. Includes performance optimizations with move caching and streamlined parsing for high-frequency operations. Designed for integration with chess engines and game state management with full promotion functionality implemented.
 
 ## Metadata
 - **Filename:** `ChessMove.cs`
 - **Primary namespace:** `GPTDeepResearch`
-- **Estimated lines:** 1200
-- **Estimated chars:** 65,000
-- **Public types:** `ChessMove, MoveType, Annotations`
+- **Dependent namespace:** `SPACE_UTIL` (using SPACE_UTIL;)
+- **Estimated lines:** 620
+- **Estimated chars:** 22,000
+- **Public types:** `ChessMove` (struct), `ChessMove.MoveType` (enum), `ChessMove.Annotations` (static class)
 - **Unity version / Target framework:** Unity 2020.3 / .NET Standard 2.0
-- **Dependencies:** `SPACE_UTIL` (v2 struct), `ChessBoard.cs` (AlgebraicToCoord, CoordToAlgebraic, GetLegalMoves), `ChessRules.cs` (ValidateMove)
+- **Dependencies:** SPACE_UTIL.v2, ChessBoard (ChessBoard.AlgebraicToCoord, ChessBoard.CoordToAlgebraic, ChessBoard.GetPiece, ChessBoard.GetLegalMoves methods)
 
 ## Public API summary (table)
 
-| Type | Member | Signature | Short purpose |
-|------|--------|-----------|--------------|
-| ChessMove | FromPGN() | public static ChessMove FromPGN(string pgnMove, ChessBoard board, List<ChessMove> legalMoves = null) | Parse PGN notation with disambiguation |
-| ChessMove | FromUCI() | public static ChessMove FromUCI(string uciMove, ChessBoard board) | Parse UCI format with caching |
-| ChessMove | ToPGN() | public string ToPGN(ChessBoard board, List<ChessMove> legalMoves = null) | Export to PGN with proper disambiguation |
-| ChessMove | ToUCI() | public string ToUCI() | Export to UCI format |
-| ChessMove | WithAnalysisData() | public ChessMove WithAnalysisData(float analysisTimeMs, int depth, float evaluation) | Add engine analysis data |
-| ChessMove | WithAnnotation() | public ChessMove WithAnnotation(string annotation) | Set move annotation |
-| ChessMove | IsValid() | public bool IsValid() | Validate move coordinates |
-| ChessMove | IsLegal() | public bool IsLegal(ChessBoard board) | Check legality on given board |
-| ChessMove | CreatePromotionMove() | public static ChessMove CreatePromotionMove(v2 from, v2 to, char movingPiece, char promotionType, char capturedPiece = '\0') | Create validated promotion move |
-| ChessMove | RunAllTests() | public static void RunAllTests() | Execute comprehensive test suite |
+| Type | Member | Signature | Short purpose | OneLiner Call |
+|------|--------|-----------|---------------|---------------|
+| ChessMove (struct) | Constructor | `public ChessMove(v2 from, v2 to, char piece, char capturedPiece = '\0')` | Create normal move | `new ChessMove(from, to, 'P')` |
+| ChessMove | Constructor | `public ChessMove(v2 from, v2 to, char piece, char promotionPiece, char capturedPiece = '\0')` | Create promotion move | `new ChessMove(from, to, 'P', 'Q')` |
+| ChessMove | Constructor | `public ChessMove(v2 kingFrom, v2 kingTo, v2 rookFrom, v2 rookTo, char piece)` | Create castling move | `new ChessMove(e1, g1, h1, f1, 'K')` |
+| ChessMove | FromPGN | `public static ChessMove FromPGN(string pgnMove, ChessBoard board, List<ChessMove> legalMoves = null)` | Parse from PGN notation | `ChessMove.FromPGN("e4", board)` |
+| ChessMove | FromUCI | `public static ChessMove FromUCI(string uciMove, ChessBoard board)` | Parse from UCI notation | `ChessMove.FromUCI("e2e4", board)` |
+| ChessMove | ToPGN | `public string ToPGN(ChessBoard board, List<ChessMove> legalMoves = null)` | Convert to PGN notation | `move.ToPGN(board)` |
+| ChessMove | ToUCI | `public string ToUCI()` | Convert to UCI notation | `move.ToUCI()` |
+| ChessMove | WithAnalysisData | `public ChessMove WithAnalysisData(float analysisTimeMs, int depth, float evaluation)` | Add analysis metadata | `move.WithAnalysisData(1500f, 15, 0.3f)` |
+| ChessMove | WithAnnotation | `public ChessMove WithAnnotation(string annotation)` | Set move annotation | `move.WithAnnotation("!")` |
+| ChessMove | GetAnalysisSummary | `public string GetAnalysisSummary()` | Format analysis data | `move.GetAnalysisSummary()` |
+| ChessMove | IsValid | `public bool IsValid()` | Check move validity | `if (move.IsValid())` |
+| ChessMove | IsLegal | `public bool IsLegal(ChessBoard board)` | Check move legality | `if (move.IsLegal(board))` |
+| ChessMove | IsCapture | `public bool IsCapture()` | True if capture move | `if (move.IsCapture())` |
+| ChessMove | IsQuiet | `public bool IsQuiet()` | True if quiet move | `if (move.IsQuiet())` |
+| ChessMove | GetDistance | `public int GetDistance()` | Manhattan distance | `int dist = move.GetDistance()` |
+| ChessMove | RequiresPromotion | `public static bool RequiresPromotion(v2 from, v2 to, char piece)` | Check if promotion needed | `if (ChessMove.RequiresPromotion(from, to, piece))` |
+| ChessMove | IsValidPromotionPiece | `public static bool IsValidPromotionPiece(char piece)` | Validate promotion piece | `if (ChessMove.IsValidPromotionPiece('Q'))` |
+| ChessMove | GetDefaultPromotionPiece | `public static char GetDefaultPromotionPiece(bool isWhite)` | Get default promotion | `char piece = ChessMove.GetDefaultPromotionPiece(true)` |
+| ChessMove | GetPromotionOptions | `public static char[] GetPromotionOptions(bool isWhite)` | Get promotion choices | `char[] options = ChessMove.GetPromotionOptions(true)` |
+| ChessMove | GetPromotionPieceName | `public static string GetPromotionPieceName(char piece)` | Get piece name | `string name = ChessMove.GetPromotionPieceName('Q')` |
+| ChessMove | CreatePromotionMove | `public static ChessMove CreatePromotionMove(v2 from, v2 to, char movingPiece, char promotionType, char capturedPiece = '\0')` | Create valid promotion | `ChessMove.CreatePromotionMove(from, to, 'P', 'Q')` |
+| ChessMove | Invalid | `public static ChessMove Invalid()` | Create invalid move | `ChessMove.Invalid()` |
+| ChessMove | TestUCIPromotionParsing | `public static void TestUCIPromotionParsing()` | Test UCI promotion | `ChessMove.TestUCIPromotionParsing()` |
+| ChessMove | TestMoveCreation | `public static void TestMoveCreation()` | Test move creation | `ChessMove.TestMoveCreation()` |
+| ChessMove | TestPGNParsing | `public static void TestPGNParsing()` | Test PGN parsing | `ChessMove.TestPGNParsing()` |
+| ChessMove | TestPerformanceOptimizations | `public static void TestPerformanceOptimizations()` | Test caching | `ChessMove.TestPerformanceOptimizations()` |
+| ChessMove | RunAllTests | `public static void RunAllTests()` | Run all tests | `ChessMove.RunAllTests()` |
+| MoveType (enum) | Values | `Normal, Castling, EnPassant, Promotion, CastlingPromotion` | Move type enumeration | `move.moveType == MoveType.Promotion` |
+| Annotations (static class) | Constants | `Check = "+", Checkmate = "#", Brilliant = "!!", Good = "!", etc.` | Standard annotations | `move.WithAnnotation(Annotations.Good)` |
 
 ## Important types — details
 
 ### `ChessMove`
-- **Kind:** struct (Serializable, IEquatable<ChessMove>)
-- **Responsibility:** Represents chess moves with comprehensive parsing, validation, and analysis data
-- **Constructor(s):** 
-  - `ChessMove(v2 from, v2 to, char piece, char capturedPiece = '\0')` — Normal move
-  - `ChessMove(v2 from, v2 to, char piece, char promotionPiece, char capturedPiece = '\0')` — Promotion
-  - `ChessMove(v2 kingFrom, v2 kingTo, v2 rookFrom, v2 rookTo, char piece)` — Castling
+- **Kind:** struct
+- **Responsibility:** Immutable move representation with comprehensive parsing and validation
+- **Constructor(s):** Three overloads for normal, promotion, and castling moves
 - **Public properties / fields:**
-  - from — v2 — Source square coordinates
-  - to — v2 — Destination square coordinates  
-  - piece — char — Moving piece ('P', 'N', 'B', 'R', 'Q', 'K' or lowercase)
-  - capturedPiece — char — Captured piece or '\0'
-  - moveType — MoveType — Normal, Castling, EnPassant, Promotion, CastlingPromotion
-  - promotionPiece — char — Promotion piece ('Q', 'R', 'B', 'N' or lowercase)
-  - rookFrom/rookTo — v2 — Rook coordinates for castling
-  - analysisTime — float — Engine analysis time (ms)
-  - annotation — string — Move annotation (+, #, !, ?, etc.)
-  - engineDepth — int — Search depth if from engine
-  - engineEval — float — Engine evaluation after move
-- **Public methods:**
-  - **FromPGN():** Parse Standard Algebraic Notation with disambiguation
-    - **Parameters:** pgnMove : string — PGN notation, board : ChessBoard — current position, legalMoves : List<ChessMove> — optional legal moves cache
-    - **Returns:** ChessMove — parsed move or Invalid()
-    - **Side effects:** Updates move cache, logs parsing results
-    - **Complexity:** O(n) where n = number of legal moves for disambiguation
-    - **Notes:** Handles castling (O-O, O-O-O), captures, promotions, check/mate annotations
-  - **FromUCI():** Parse UCI format with performance caching
-    - **Parameters:** uciMove : string — UCI notation (e2e4, e7e8q), board : ChessBoard — current position
-    - **Returns:** ChessMove — parsed move or Invalid()
-    - **Side effects:** Updates static cache (max 1000 entries), auto-detects promotion
-    - **Complexity:** O(1) for cached moves, O(1) for parsing
-    - **Notes:** Validates coordinates, handles promotion pieces, thread-safe caching
-  - **ToPGN():** Export to Standard Algebraic Notation
-    - **Parameters:** board : ChessBoard — current position, legalMoves : List<ChessMove> — optional legal moves cache
-    - **Returns:** string — PGN notation with proper disambiguation
-    - **Side effects:** None
-    - **Notes:** Automatically disambiguates when multiple pieces can reach same square
-  - **IsValid():** Basic coordinate validation
-    - **Returns:** bool — true if coordinates are within board bounds and move is non-null
-    - **Notes:** Does not check chess legality, only structural validity
-  - **WithAnalysisData():** Add engine analysis metadata
-    - **Parameters:** analysisTimeMs : float — analysis duration, depth : int — search depth, evaluation : float — position evaluation
-    - **Returns:** ChessMove — copy with analysis data
-    - **Notes:** Creates new instance, preserves original move data
+  - `from` — v2 — Source square coordinates
+  - `to` — v2 — Target square coordinates  
+  - `piece` — char — Moving piece character
+  - `capturedPiece` — char — Captured piece (or '\0')
+  - `moveType` — MoveType — Type of move
+  - `promotionPiece` — char — Promotion piece character
+  - `rookFrom` — v2 — Rook source for castling
+  - `rookTo` — v2 — Rook target for castling
+  - `analysisTime` — float — Analysis duration in ms
+  - `annotation` — string — Move annotation (+, #, !, etc.)
+  - `engineDepth` — int — Search depth if from engine
+  - `engineEval` — float — Engine evaluation
+- **Notes:** Implements IEquatable<ChessMove>, includes move caching for performance, supports comprehensive promotion validation
 
 ### `MoveType`
-- **Kind:** enum
-- **Responsibility:** Categorizes special move types
+- **Kind:** enum (located in ChessMove)
+- **Responsibility:** Categorizes different types of chess moves
 - **Values:** Normal, Castling, EnPassant, Promotion, CastlingPromotion
 
 ### `Annotations`
-- **Kind:** static class
-- **Responsibility:** PGN annotation constants
-- **Constants:** Check ("+"), Checkmate ("#"), Good ("!"), Mistake ("?"), Brilliant ("!!"), etc.
+- **Kind:** static class (located in ChessMove)
+- **Responsibility:** Standard chess move annotation constants
+- **Constants:** Check ("+"), Checkmate ("#"), Brilliant ("!!"), Good ("!"), Interesting ("!?"), Dubious ("?!"), Mistake ("?"), Blunder ("??")
 
 ## Example usage
 
 ```csharp
-// Parse PGN moves
-ChessBoard board = new ChessBoard();
-ChessMove move = ChessMove.FromPGN("Nf3", board);
-ChessMove capture = ChessMove.FromPGN("exd5", board);
-ChessMove castle = ChessMove.FromPGN("O-O", board);
+// Parse UCI move with promotion
+ChessMove move = ChessMove.FromUCI("e7e8q", board);
+if (move.moveType == MoveType.Promotion) {
+    Debug.Log($"Promotes to {move.GetPromotionPieceName(move.promotionPiece)}");
+}
 
-// Parse UCI moves
-ChessMove uciMove = ChessMove.FromUCI("e2e4", board);
-ChessMove promotion = ChessMove.FromUCI("e7e8q", board);
+// Parse PGN notation
+ChessMove pgnMove = ChessMove.FromPGN("Nf3+", board);
+Debug.Log(pgnMove.ToPGN(board)); // "Nf3+"
 
-// Create moves programmatically  
-ChessMove normalMove = new ChessMove(new v2(4,1), new v2(4,3), 'P');
-ChessMove promMove = ChessMove.CreatePromotionMove(new v2(4,6), new v2(4,7), 'P', 'Q');
-
-// Add analysis data
-ChessMove analyzed = move.WithAnalysisData(150f, 12, 0.85f).WithAnnotation("!");
-
-// Export moves
-string pgn = move.ToPGN(board);    // "Nf3"
-string uci = move.ToUCI();         // "g1f3"
+// Create promotion move
+ChessMove promotion = ChessMove.CreatePromotionMove(
+    new v2(4, 6), new v2(4, 7), 'P', 'Q');
 ```
 
 ## Control flow / responsibilities & high-level algorithm summary
 
-The parsing system operates in two main paths: PGN parsing uses legal move generation and disambiguation, while UCI parsing performs direct coordinate translation. PGN parsing workflow: (1) Clean input notation, (2) Parse components (piece type, target square, disambiguators), (3) Find candidate legal moves, (4) Apply disambiguation rules, (5) Validate and return result. UCI parsing workflow: (1) Check cache, (2) Parse coordinates directly, (3) Detect special moves (promotion, castling), (4) Validate bounds, (5) Cache result.
-
-The disambiguation algorithm prioritizes file over rank when multiple pieces can reach the same target. Promotion detection validates rank requirements and piece characters. Move caching uses a dictionary with LRU-style pruning at 1000 entries to optimize repeated parsing operations.
+Move parsing follows different paths for UCI vs PGN formats. UCI parsing uses direct coordinate calculation with character arithmetic for performance, validates coordinates and piece types, handles promotion detection through string length and character validation. PGN parsing involves multi-step disambiguation: clean annotation removal, component extraction (piece type, target square, capture flag, disambiguation), candidate filtering from legal moves, and disambiguation resolution using file/rank hints. Both formats support caching for repeated parsing operations. Promotion validation ensures proper rank requirements and piece type constraints.
 
 ## Side effects and I/O
 
-- **Static cache:** UCI parsing maintains a static Dictionary<string, ChessMove> with max 1000 entries
-- **Logging:** Debug.Log statements for successful/failed parsing with color coding
-- **Memory allocation:** String operations during parsing, temporary collections for disambiguation
-- **Global state:** Cache mutations are thread-unsafe but parsing is deterministic
+No direct I/O operations. Accesses ChessBoard state for piece validation and legal move generation. Modifies static UCI cache dictionary for performance optimization. Writes debug logs to Unity console during test operations and error conditions. Move validation may trigger legal move generation on provided ChessBoard instance.
 
 ## Performance, allocations, and hotspots
 
-- **Heavy operations:** PGN disambiguation requires legal move generation (O(n) where n ≈ 20-40 moves)
-- **Optimizations:** UCI move caching provides ~60% performance improvement for repeated parsing
-- **Allocations:** String parsing creates temporary char arrays, StringBuilder for output formatting
-- **Hotspots:** GetDisambiguation() method for PGN export, legal move filtering in FromPGN()
-- **GC pressure:** Frequent string allocations during annotation parsing, temporary collections
+UCI parsing optimized with direct character arithmetic and move caching (Dictionary<string, ChessMove> with 1000 entry limit). PGN parsing allocates StringBuilder for cleaning, string arrays for component parsing, and List<ChessMove> for candidate filtering. Frequent string operations in coordinate conversion and validation. GetHashCode() uses unchecked arithmetic for performance. ToString() methods use StringBuilder to minimize allocations.
 
 ## Threading / async considerations
 
-- **Thread safety:** UCI cache is not thread-safe; concurrent parsing could corrupt cache state
-- **Static state:** Cache dictionary shared across all instances
-- **No async operations:** All parsing is synchronous
-- **Recommendations:** Use separate parser instances per thread or add locking for cache access
+Thread-safe struct design with immutable data. Static UCI cache shared across threads requires external synchronization if used concurrently. No async operations or Unity coroutines within the struct itself. All parsing methods are synchronous and safe for background thread usage.
 
 ## Security / safety / correctness concerns
 
-- **Input validation:** Comprehensive bounds checking for all coordinate parsing
-- **Edge cases:** Handles malformed PGN notation gracefully, returns Invalid() rather than throwing
-- **Memory safety:** No unsafe code, but potential for cache memory leaks if not managed
-- **Chess rule validation:** Structural validation only; legal move validation requires ChessBoard integration
+Coordinate validation prevents out-of-bounds access, UCI string length validation prevents index exceptions, promotion piece validation ensures only valid pieces (Q,R,B,N), PGN parsing includes comprehensive input sanitization and bounds checking. Move equality comparison includes all relevant fields. Invalid move creation uses safe sentinel values (-1, -1) for coordinates.
 
 ## Tests, debugging & observability
 
-- **Built-in logging:** Color-coded Debug.Log statements (green=success, red=error, yellow=warning)
-- **Test methods:** 
-  - TestUCIPromotionParsing() — Validates all promotion pieces and edge cases
-  - TestMoveCreation() — Tests constructors and validation
-  - TestPGNParsing() — Tests disambiguation and annotation parsing
-  - TestPerformanceOptimizations() — Benchmarks caching performance
-  - RunAllTests() — Complete test suite
-- **Test coverage:** Promotion validation, PGN disambiguation, UCI caching, move creation
-- **Debug features:** GetAnalysisSummary() provides formatted analysis data
+Comprehensive test suite includes TestUCIPromotionParsing() for all promotion scenarios, TestMoveCreation() for constructor validation, TestPGNParsing() for algebraic notation, TestPerformanceOptimizations() for cache effectiveness, and RunAllTests() as complete test runner. Debug logging with colored Unity console output during test execution and error conditions.
 
 ## Cross-file references
 
-- `ChessBoard.cs`: AlgebraicToCoord(), CoordToAlgebraic(), GetLegalMoves() for coordinate conversion and legal move validation(Hence ChessMov.cs already support Undo/Redo)
-- `SPACE_UTIL`: v2 struct for 2D coordinate representation
-- `ChessRules.cs`: ValidateMove() for legality checking (referenced but not implemented)
+- `SPACE_UTIL.v2` — 2D coordinate structure for chess squares  
+- `ChessBoard.cs` — Board state access (GetPiece, GetLegalMoves, AlgebraicToCoord, CoordToAlgebraic, LoadFromFEN methods)
+- UnityEngine.Debug — Unity logging system for test output and error reporting
 
-<!--
-## TODO / Known limitations / Suggested improvements
-
-- TODO: Add threefold repetition detection integration
-- TODO: Implement full chess legality validation without ChessBoard dependency  
-- TODO: Add support for Chess960 castling notation
-- Limitation: UCI cache is not thread-safe
-- Limitation: PGN parsing requires legal moves for disambiguation
-- Suggested: Implement algebraic move validation without board dependency
-- Suggested: Add support for time annotations in PGN format
-- Suggested: Optimize disambiguation algorithm for better performance
--->
+<!-- TODO(only if i have explicitly mentioned in prompt): Consider implementing move quality evaluation based on engine analysis, adding support for time controls in analysis data, implementing move tree structures for variation analysis, adding FEN delta calculation for efficient position updates, and considering UCI_Chess960 support for Fischer Random positions. Performance could be improved with compile-time coordinate validation and specialized parsing for common opening moves. -->
 
 ## Appendix
 
-**Key private methods:**
-- `CleanPGNMove(string move)`: Removes annotations while preserving structural characters
-- `ParsePGNComponents(string move)`: Extracts piece type, target square, and modifiers
-- `DisambiguateMove(List<ChessMove> candidates, PGNComponents components)`: Resolves ambiguous moves
-- `RequiresPromotion(v2 from, v2 to, char piece)`: Validates pawn promotion requirements
+Core parsing algorithms use optimized string operations and pre-allocated character arrays. UCI cache uses Dictionary<string, ChessMove> with LRU-style management when size limit reached. PGN disambiguation algorithm follows official FIDE standards for file/rank preference. Promotion validation includes comprehensive rank checking and piece type constraints.
 
-**Performance constants:**
-- `MAX_CACHE_SIZE = 1000`: UCI cache size limit
-- Move parsing: ~0.1ms uncached, ~0.04ms cached (60% improvement)
-
-**File checksum:** First 8 chars of conceptual SHA1: `f3e7a8b2`
+File checksum: SHA1 first 8 chars would be calculated from file content for version tracking.
