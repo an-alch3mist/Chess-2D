@@ -24,7 +24,7 @@ using UnityEngine;
 using UnityEngine.Events;
 
 using SPACE_UTIL;
-// Script Size: ~47,000 chars 
+// Script Size: ~45,000 chars 
 namespace GPTDeepResearch
 {
 	/// <summary>
@@ -1637,7 +1637,7 @@ namespace GPTDeepResearch
 		/// <summary>
 		/// Test promotion parsing with various UCI formats
 		/// </summary>
-		public void TestPromotionParsing()
+		private void TestPromotionParsing()
 		{
 			string[] testMoves = { "e7e8q", "a7a8n", "h2h1r", "b7b8b", "d7c8q", "f2g1n" };
 
@@ -1667,7 +1667,7 @@ namespace GPTDeepResearch
 		/// <summary>
 		/// Test Elo calculation with various parameters
 		/// </summary>
-		public void TestEloCalculation()
+		private void TestEloCalculation()
 		{
 			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing Elo calculation...</color>");
 
@@ -1684,6 +1684,312 @@ namespace GPTDeepResearch
 			}
 		}
 
+
+		// ADD - After the existing TestEloCalculation method, add comprehensive API validation tests:
+		/// <summary>
+		/// Test comprehensive analysis with various FEN positions and edge cases
+		/// </summary>
+		private void TestComprehensiveAnalysis()
+		{
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing comprehensive analysis...</color>");
+
+			// Test positions
+			string[] testPositions = {
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", // Starting position
+				"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // Complex middle game
+				"8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", // Endgame
+				"rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", // Promotion opportunity
+				"8/8/8/8/8/8/k7/K7 w - - 0 1" // Minimal material
+			};
+
+			foreach (string fen in testPositions)
+			{
+				StartCoroutine(TestSinglePosition(fen));
+			}
+		}
+
+		private IEnumerator TestSinglePosition(string fen)
+		{
+			yield return StartCoroutine(AnalyzePositionCoroutine(fen, 1000, 8, 10, 1500, 5));
+
+			if (LastAnalysisResult.bestMove.StartsWith("ERROR"))
+			{
+				UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Analysis failed for {fen}: {LastAnalysisResult.errorMessage}</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Analysis success: {LastAnalysisResult.bestMove} | Eval: {LastAnalysisResult.GetEvaluationDisplay()}</color>");
+			}
+		}
+
+		/// <summary>
+		/// Test game history management with edge cases
+		/// </summary>
+		private void TestGameHistoryManagement()
+		{
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing game history management...</color>");
+
+			ClearHistory();
+
+			// Test adding moves to history
+			ChessBoard testBoard = new ChessBoard();
+			ChessMove move1 = ChessMove.FromUCI("e2e4", testBoard);
+			AddMoveToHistory("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", move1, "e4", 0.3f);
+
+			if (GameHistory.Count == 1 && CurrentHistoryIndex == 0)
+			{
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Move added to history correctly</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Move history addition failed</color>");
+			}
+
+			// Test undo
+			var undoEntry = UndoMove();
+			if (undoEntry != null && CurrentHistoryIndex == -1)
+			{
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Undo functionality works</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Undo functionality failed</color>");
+			}
+
+			// Test redo
+			var redoEntry = RedoMove();
+			if (redoEntry != null && CurrentHistoryIndex == 0)
+			{
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Redo functionality works</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Redo functionality failed</color>");
+			}
+
+			// Test history limits
+			for (int i = 0; i < maxHistorySize + 5; i++)
+			{
+				AddMoveToHistory($"test-fen-{i}", move1, $"move{i}", 0f);
+			}
+
+			if (GameHistory.Count <= maxHistorySize)
+			{
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ History size limit enforced</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ History size limit not enforced</color>");
+			}
+		}
+
+		/// <summary>
+		/// Test engine restart and crash recovery
+		/// </summary>
+		private void TestEngineRestart()
+		{
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing engine restart...</color>");
+
+			if (IsEngineRunning)
+			{
+				StopEngine();
+				if (!IsEngineRunning)
+				{
+					UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Engine stopped successfully</color>");
+				}
+				else
+				{
+					UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Engine failed to stop</color>");
+				}
+			}
+
+			StartEngine();
+			StartCoroutine(TestEngineRestartCoroutine());
+		}
+
+		private IEnumerator TestEngineRestartCoroutine()
+		{
+			yield return StartCoroutine(InitializeEngineCoroutine());
+
+			if (IsEngineRunning && IsReady)
+			{
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Engine restarted and ready</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Engine restart failed</color>");
+			}
+		}
+
+		/// <summary>
+		/// Test side management functionality
+		/// </summary>
+		private void TestSideManagement()
+		{
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing side management...</color>");
+
+			char originalSide = HumanSide;
+
+			// Test setting human side
+			SetHumanSide('w');
+			if (HumanSide == 'w' && EngineSide == 'b')
+			{
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Human side set to white correctly</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Human side setting failed</color>");
+			}
+
+			SetHumanSide('b');
+			if (HumanSide == 'b' && EngineSide == 'w')
+			{
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Human side set to black correctly</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Human side setting failed</color>");
+			}
+
+			// Test invalid side
+			SetHumanSide('x');
+			if (HumanSide == 'b') // Should remain unchanged
+			{
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Invalid side rejected correctly</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Invalid side not rejected</color>");
+			}
+
+			// Restore original side
+			SetHumanSide(originalSide);
+		}
+
+		/// <summary>
+		/// Test FEN validation with edge cases
+		/// </summary>
+		private void TestFENValidation()
+		{
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing FEN validation...</color>");
+
+			// Valid FENs
+			string[] validFENs = {
+		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+		"8/8/8/8/8/8/8/8 w - - 0 1",
+		"startpos"
+	};
+
+			foreach (string fen in validFENs)
+			{
+				string error = ValidateFen(fen);
+				if (string.IsNullOrEmpty(error))
+				{
+					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Valid FEN accepted: {fen.Substring(0, Math.Min(20, fen.Length))}...</color>");
+				}
+				else
+				{
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Valid FEN rejected: {fen} - {error}</color>");
+				}
+			}
+
+			// Invalid FENs
+			string[] invalidFENs = {
+		"",
+		"invalid",
+		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", // Missing side to move
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR x KQkq - 0 1", // Invalid side
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP w KQkq - 0 1" // Missing rank
+    };
+
+			foreach (string fen in invalidFENs)
+			{
+				string error = ValidateFen(fen);
+				if (!string.IsNullOrEmpty(error))
+				{
+					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Invalid FEN rejected: {error}</color>");
+				}
+				else
+				{
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Invalid FEN accepted: {fen}</color>");
+				}
+			}
+		}
+
+		/// <summary>
+		/// Test promotion detection and parsing
+		/// </summary>
+		private void TestPromotionDetection()
+		{
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing promotion detection...</color>");
+
+			// Test promotion moves
+			string[] promotionMoves = { "e7e8q", "e7e8r", "e7e8b", "e7e8n", "a2a1Q", "h7h8N" };
+			char[] expectedPieces = { 'q', 'r', 'b', 'n', 'Q', 'N' };
+
+			for (int i = 0; i < promotionMoves.Length; i++)
+			{
+				ChessAnalysisResult result = new ChessAnalysisResult();
+				result.bestMove = promotionMoves[i];
+				result.sideToMove = char.IsUpper(expectedPieces[i]) ? 'w' : 'b';
+				result.ParsePromotionData();
+
+				if (result.isPromotion && result.promotionPiece == expectedPieces[i])
+				{
+					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Promotion detected: {promotionMoves[i]} -> {result.GetPromotionDescription()}</color>");
+				}
+				else
+				{
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Promotion detection failed: {promotionMoves[i]}</color>");
+				}
+			}
+
+			// Test non-promotion moves
+			string[] normalMoves = { "e2e4", "Nf3", "O-O", "Qh5" };
+
+			foreach (string move in normalMoves)
+			{
+				ChessAnalysisResult result = new ChessAnalysisResult();
+				result.bestMove = move;
+				result.ParsePromotionData();
+
+				if (!result.isPromotion)
+				{
+					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Non-promotion correctly identified: {move}</color>");
+				}
+				else
+				{
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ False promotion detected: {move}</color>");
+				}
+			}
+		}
+
+		private IEnumerator RunCoroutineTests()
+		{
+			yield return new WaitForSeconds(0.1f);
+			TestComprehensiveAnalysis();
+		}
+
+		/// <summary>
+		/// Run all StockfishBridge API validation tests
+		/// </summary>
+		public void RunAllTests()
+		{
+			UnityEngine.Debug.Log("<color=cyan>=== StockfishBridge Comprehensive Test Suite ===</color>");
+
+			TestPromotionParsing();
+			TestEloCalculation();
+			TestFENValidation();
+			TestPromotionDetection();
+			TestSideManagement();
+			TestGameHistoryManagement();
+			TestEngineRestart();
+
+			// Start coroutine tests
+			StartCoroutine(RunCoroutineTests());
+
+			UnityEngine.Debug.Log("<color=cyan>=== StockfishBridge Tests Completed ===</color>");
+		}
 		#endregion
 	}
 }
