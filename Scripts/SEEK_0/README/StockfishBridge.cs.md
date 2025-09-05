@@ -225,7 +225,7 @@ Implements a Unity-compatible bridge to the Stockfish chess engine using UCI pro
 // namespace GPTDeepResearch required
 
 // Basic engine startup and analysis
-StockfishBridge bridge = gameObject.GetComponent<StockfishBridge>();
+StockfishBridge bridge = gameObject.GetComponent<StockfishBridge>(); // or use from [SerilizedField]
 bridge.StartEngine();
 yield return bridge.InitializeEngineCoroutine();
 
@@ -237,9 +237,9 @@ Debug.Log($"Evaluation: {bridge.LastAnalysisResult.GetEvaluationDisplay()}");
 // Advanced analysis with custom settings
 yield return bridge.AnalyzePositionCoroutine(
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 
-    2000,  // 2 second time limit
-    15,    // search depth
-    18,    // evaluation depth  
+    -1,    // not based on time limit
+    12,    // search depth
+    12,    // evaluation depth  
     1800,  // 1800 Elo limit
     12     // skill level 12
 );
