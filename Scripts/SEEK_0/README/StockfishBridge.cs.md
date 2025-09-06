@@ -1,285 +1,246 @@
-# Source: `StockfishBridge.cs` — Unity Stockfish chess engine bridge with comprehensive promotion support and game management
+# Source: `StockfishBridge.cs` — Unity chess engine bridge with comprehensive promotion support and game management
 
-Unity MonoBehaviour bridge providing non-blocking communication with Stockfish chess engine, featuring comprehensive UCI promotion parsing, evaluation analysis, and complete game history management with undo/redo functionality.
+* Unity MonoBehaviour that provides non-blocking Stockfish chess engine integration with full promotion handling, undo/redo functionality, and side selection.
 
-## Short description
+## Short description (2–4 sentences)
 
-Implements a Unity-compatible bridge to the Stockfish chess engine using UCI protocol. Provides comprehensive chess position analysis with full promotion move support (e7e8q, a2a1n), advanced evaluation calculations using research-based centipawn-to-probability conversion, game history management with undo/redo capabilities, and robust engine crash detection/recovery. Designed for Unity 2020.3+ with non-blocking coroutine-based analysis and thread-safe communication.
+StockfishBridge implements a complete chess engine interface for Unity games, handling UCI communication, position analysis, and game state management. It provides comprehensive promotion move parsing (e7e8q, a2a1n), evaluation probability calculations using research-based logistic functions, and robust crash detection with automatic recovery. The bridge supports configurable engine strength via Elo ratings and skill levels, maintains complete game history with undo/redo capabilities, and offers side selection for human vs engine gameplay.
 
 ## Metadata
 
 * **Filename:** `StockfishBridge.cs`
 * **Primary namespace:** `GPTDeepResearch`
-* **Dependent namespace:** `SPACE_UTIL` (v2 struct), `System`, `UnityEngine`
+* **Dependent namespace:** `System, System.Text, System.IO, System.Collections, System.Collections.Concurrent, System.Collections.Generic, System.Diagnostics, System.Threading, UnityEngine, UnityEngine.Events, SPACE_UTIL`
 * **Estimated lines:** 1800
 * **Estimated chars:** 45,000
-* **Public types:** `StockfishBridge (class, MonoBehaviour)`, `StockfishBridge.ChessAnalysisResult (class)`, `StockfishBridge.GameHistoryEntry (class)`
-* **Unity version / Target framework:** Unity 2020.3 / .NET Standard 2.0
-* **Dependencies:** `SPACE_UTIL.v2` (struct), `ChessBoard.cs`, `ChessMove.cs`, Unity 2020.3+ threading, System.Diagnostics.Process
+* **Public types:** `StockfishBridge (class, inherits MonoBehaviour), StockfishBridge.ChessAnalysisResult (class), StockfishBridge.GameHistoryEntry (class)`
+* **Unity version / Target framework (if detectable):** Unity 2020.3 / .NET Standard 2.0
+* **Dependencies:** `SPACE_UTIL.v2` (SPACE_UTIL is namespace), ChessBoard.cs, ChessMove.cs
 
 ## Public API summary (table)
 
 | **Type** | **Member** | **Signature** | **Short purpose** | **OneLiner Call** |
-|----------|------------|---------------|------------------|-------------------|
-| void | Awake | private void Awake() | Initialize engine on component creation | N/A (Unity lifecycle) |
-| void | Update | private void Update() | Process incoming engine messages | N/A (Unity lifecycle) |
-| void | OnApplicationQuit | private void OnApplicationQuit() | Clean shutdown on app exit | N/A (Unity lifecycle) |
-| void | StartEngine | public void StartEngine() | Start Stockfish process | bridge.StartEngine() |
-| void | StopEngine | public void StopEngine() | Stop engine and cleanup | bridge.StopEngine() |
-| IEnumerator | AnalyzePositionCoroutine | public IEnumerator AnalyzePositionCoroutine(string fen) | Analyze position with defaults | yield return bridge.AnalyzePositionCoroutine(fen) or StartCoroutine(bridge.AnalyzePositionCoroutine(fen)) |
-| IEnumerator | AnalyzePositionCoroutine | public IEnumerator AnalyzePositionCoroutine(string fen, int movetimeMs, int searchDepth, int evaluationDepth, int elo, int skillLevel) | Comprehensive position analysis | yield return bridge.AnalyzePositionCoroutine(fen, 1000, 12, 15, 1500, 8) or StartCoroutine(bridge.AnalyzePositionCoroutine(fen, 1000, 12, 15, 1500, 8)) |
-| void | SetHumanSide | public void SetHumanSide(char side) | Set human player side | bridge.SetHumanSide('w') |
-| void | AddMoveToHistory | public void AddMoveToHistory(string fen, ChessMove move, string notation, float evaluation) | Add move to game history | bridge.AddMoveToHistory(fen, move, "e4", 0.3f) |
-| StockfishBridge.GameHistoryEntry | UndoMove | public StockfishBridge.GameHistoryEntry UndoMove() | Undo last move | var entry = bridge.UndoMove() |
-| StockfishBridge.GameHistoryEntry | RedoMove | public StockfishBridge.GameHistoryEntry RedoMove() | Redo next move | var entry = bridge.RedoMove() |
-| bool | CanUndo | public bool CanUndo() | Check if undo possible | bool canUndo = bridge.CanUndo() |
-| bool | CanRedo | public bool CanRedo() | Check if redo possible | bool canRedo = bridge.CanRedo() |
-| void | ClearHistory | public void ClearHistory() | Clear game history | bridge.ClearHistory() |
-| string | GetGameHistoryPGN | public string GetGameHistoryPGN() | Get history as PGN | string pgn = bridge.GetGameHistoryPGN() |
-| IEnumerator | RestartEngineCoroutine | public IEnumerator RestartEngineCoroutine() | Restart crashed engine | yield return bridge.RestartEngineCoroutine() or StartCoroutine(bridge.RestartEngineCoroutine()) |
-| bool | DetectAndHandleCrash | public bool DetectAndHandleCrash() | Check for engine crash | bool crashed = bridge.DetectAndHandleCrash() |
-| void | SendCommand | public void SendCommand(string command) | Send UCI command | bridge.SendCommand("position startpos") |
-| IEnumerator | InitializeEngineCoroutine | public IEnumerator InitializeEngineCoroutine() | Initialize and wait ready | yield return bridge.InitializeEngineCoroutine() or StartCoroutine(bridge.InitializeEngineCoroutine()) |
-| void | RunAllTests | public void RunAllTests() | Run comprehensive tests | bridge.RunAllTests() |
-| string | LastRawOutput | public string LastRawOutput { get; } | Last engine output | string output = bridge.LastRawOutput |
-| StockfishBridge.ChessAnalysisResult | LastAnalysisResult | public StockfishBridge.ChessAnalysisResult LastAnalysisResult { get; } | Last analysis result | var result = bridge.LastAnalysisResult |
-| List<StockfishBridge.GameHistoryEntry> | GameHistory | public List<StockfishBridge.GameHistoryEntry> GameHistory { get; } | Complete game history | var history = bridge.GameHistory |
-| int | CurrentHistoryIndex | public int CurrentHistoryIndex { get; } | Current history position | int index = bridge.CurrentHistoryIndex |
-| bool | IsEngineRunning | public bool IsEngineRunning { get; } | Engine process status | bool running = bridge.IsEngineRunning |
-| bool | IsReady | public bool IsReady { get; } | Engine ready status | bool ready = bridge.IsReady |
-| char | HumanSide | public char HumanSide { get; set; } | Human player side | char side = bridge.HumanSide |
-| char | EngineSide | public char EngineSide { get; } | Engine player side | char side = bridge.EngineSide |
-| UnityEvent<string> | OnEngineLine | public UnityEvent<string> OnEngineLine | Engine output event | bridge.OnEngineLine.AddListener(OnEngineOutput) |
-| UnityEvent<StockfishBridge.ChessAnalysisResult> | OnAnalysisComplete | public UnityEvent<StockfishBridge.ChessAnalysisResult> OnAnalysisComplete | Analysis complete event | bridge.OnAnalysisComplete.AddListener(OnAnalysis) |
-| UnityEvent<char> | OnSideToMoveChanged | public UnityEvent<char> OnSideToMoveChanged | Side change event | bridge.OnSideToMoveChanged.AddListener(OnSideChange) |
+|----------|------------|---------------|-------------------|-------------------|
+| int (basic-data-type) | defaultTimeoutMs | [SerializeField] private int defaultTimeoutMs = 20000 | Default analysis timeout in milliseconds | var timeout = bridge.defaultTimeoutMs; |
+| bool (basic-data-type) | enableDebugLogging | [SerializeField] private bool enableDebugLogging = true | Enable console debug output | var debug = bridge.enableDebugLogging; |
+| bool (basic-data-type) | enableEvaluation | [SerializeField] public bool enableEvaluation = true | Enable position evaluation | var evalEnabled = bridge.enableEvaluation; |
+| int (basic-data-type) | defaultDepth | [SerializeField] private int defaultDepth = 12 | Default search depth | var depth = bridge.defaultDepth; |
+| int (basic-data-type) | evalDepth | [SerializeField] private int evalDepth = 15 | Default evaluation depth | var evalDepth = bridge.evalDepth; |
+| int (basic-data-type) | defaultElo | [SerializeField] private int defaultElo = 1500 | Default engine Elo rating | var elo = bridge.defaultElo; |
+| int (basic-data-type) | defaultSkillLevel | [SerializeField] private int defaultSkillLevel = 8 | Default engine skill level (0-20) | var skill = bridge.defaultSkillLevel; |
+| bool (basic-data-type) | allowPlayerSideSelection | [SerializeField] private bool allowPlayerSideSelection = true | Allow human side selection | var allowSelection = bridge.allowPlayerSideSelection; |
+| char (basic-data-type) | humanSide | [SerializeField] private char humanSide = 'w' | Human player side ('w' or 'b') | var side = bridge.humanSide; |
+| int (basic-data-type) | maxHistorySize | [SerializeField] private int maxHistorySize = 100 | Maximum game history entries | var maxHistory = bridge.maxHistorySize; |
+| UnityEvent<string> (class) | OnEngineLine | public UnityEvent<string> OnEngineLine = new UnityEvent<string>() | Event fired for each engine output line | bridge.OnEngineLine.AddListener(handler); |
+| UnityEvent<StockfishBridge.ChessAnalysisResult> (class) | OnAnalysisComplete | public UnityEvent<ChessAnalysisResult> OnAnalysisComplete | Event fired when analysis completes | bridge.OnAnalysisComplete.AddListener(handler); |
+| UnityEvent<char> (class) | OnSideToMoveChanged | public UnityEvent<char> OnSideToMoveChanged | Event fired when side to move changes | bridge.OnSideToMoveChanged.AddListener(handler); |
+| string (basic-data-type) | LastRawOutput | public string LastRawOutput { get; } | Last raw engine output | var output = bridge.LastRawOutput; |
+| StockfishBridge.ChessAnalysisResult (class) | LastAnalysisResult | public ChessAnalysisResult LastAnalysisResult { get; } | Last analysis result | var result = bridge.LastAnalysisResult; |
+| List<StockfishBridge.GameHistoryEntry> (class) | GameHistory | public List<GameHistoryEntry> GameHistory { get; } | Complete game move history | var history = bridge.GameHistory; |
+| int (basic-data-type) | CurrentHistoryIndex | public int CurrentHistoryIndex { get; } | Current position in history | var index = bridge.CurrentHistoryIndex; |
+| bool (basic-data-type) | IsEngineRunning | public bool IsEngineRunning { get; } | True if engine process is active | var running = bridge.IsEngineRunning; |
+| bool (basic-data-type) | IsReady | public bool IsReady { get; } | True if engine is ready for commands | var ready = bridge.IsReady; |
+| char (basic-data-type) | HumanSide | public char HumanSide { get; set; } | Human player side with event firing | bridge.HumanSide = 'w'; |
+| char (basic-data-type) | EngineSide | public char EngineSide { get; } | Engine player side (opposite of human) | var engineSide = bridge.EngineSide; |
+| void (void) | StartEngine | public void StartEngine() | Start Stockfish engine process | bridge.StartEngine(); |
+| void (void) | StopEngine | public void StopEngine() | Stop engine and cleanup resources | bridge.StopEngine(); |
+| IEnumerator (IEnumerator) | AnalyzePositionCoroutine | public IEnumerator AnalyzePositionCoroutine(string fen) | Analyze position with default settings | yield return bridge.AnalyzePositionCoroutine(fen); // StartCoroutine(bridge.AnalyzePositionCoroutine(fen)); |
+| IEnumerator (IEnumerator) | AnalyzePositionCoroutine | public IEnumerator AnalyzePositionCoroutine(string fen, int movetimeMs, int searchDepth, int evaluationDepth, int elo, int skillLevel) | Comprehensive position analysis with custom parameters | yield return bridge.AnalyzePositionCoroutine(fen, 5000, 15, 20, 2000, 10); // StartCoroutine(bridge.AnalyzePositionCoroutine(fen, 5000, 15, 20, 2000, 10)); |
+| void (void) | SetHumanSide | public void SetHumanSide(char side) | Set human player side ('w' or 'b') | bridge.SetHumanSide('w'); |
+| void (void) | AddMoveToHistory | public void AddMoveToHistory(string fen, ChessMove move, string notation, float evaluation) | Add move to game history | bridge.AddMoveToHistory(fen, move, "e4", 0.3f); |
+| StockfishBridge.GameHistoryEntry (class) | UndoMove | public GameHistoryEntry UndoMove() | Undo last move and return entry | var entry = bridge.UndoMove(); |
+| StockfishBridge.GameHistoryEntry (class) | RedoMove | public GameHistoryEntry RedoMove() | Redo next move and return entry | var entry = bridge.RedoMove(); |
+| bool (basic-data-type) | CanUndo | public bool CanUndo() | Check if undo is possible | var canUndo = bridge.CanUndo(); |
+| bool (basic-data-type) | CanRedo | public bool CanRedo() | Check if redo is possible | var canRedo = bridge.CanRedo(); |
+| void (void) | ClearHistory | public void ClearHistory() | Clear all game history | bridge.ClearHistory(); |
+| string (basic-data-type) | GetGameHistoryPGN | public string GetGameHistoryPGN() | Get history as PGN notation | var pgn = bridge.GetGameHistoryPGN(); |
+| IEnumerator (IEnumerator) | RestartEngineCoroutine | public IEnumerator RestartEngineCoroutine() | Restart engine after crash | yield return bridge.RestartEngineCoroutine(); // StartCoroutine(bridge.RestartEngineCoroutine()); |
+| bool (basic-data-type) | DetectAndHandleCrash | public bool DetectAndHandleCrash() | Detect and handle engine crashes | var crashed = bridge.DetectAndHandleCrash(); |
+| void (void) | SendCommand | public void SendCommand(string command) | Send UCI command to engine | bridge.SendCommand("position startpos"); |
+| IEnumerator (IEnumerator) | InitializeEngineCoroutine | public IEnumerator InitializeEngineCoroutine() | Initialize engine and wait for ready | yield return bridge.InitializeEngineCoroutine(); // StartCoroutine(bridge.InitializeEngineCoroutine()); |
+| void (void) | RunAllTests | public void RunAllTests() | Run comprehensive API validation tests | bridge.RunAllTests(); |
 
 ## Important types — details
 
 ### `StockfishBridge`
-* **Kind:** class (MonoBehaviour)
-* **Responsibility:** Unity bridge to Stockfish engine providing chess analysis and game management.
-* **Constructor(s):** Unity MonoBehaviour constructor (automatic)
+* **Kind:** class (inherits MonoBehaviour)
+* **Responsibility:** Main bridge class managing Stockfish engine communication, analysis, and game state.
+* **Constructor(s):** Default MonoBehaviour constructor
 * **Public properties / fields:**
-  * `LastRawOutput` — string — get — Last raw engine output
-  * `LastAnalysisResult` — StockfishBridge.ChessAnalysisResult — get — Most recent analysis result
-  * `GameHistory` — List<StockfishBridge.GameHistoryEntry> — get — Complete move history
-  * `CurrentHistoryIndex` — int — get — Current position in history
-  * `IsEngineRunning` — bool — get — Engine process running status
-  * `IsReady` — bool — get — Engine initialized and ready
-  * `HumanSide` — char — get/set — Human player side ('w' or 'b')
-  * `EngineSide` — char — get — Engine player side (opposite of human)
-  * `OnEngineLine` — UnityEvent<string> — get — Event fired for each engine output line
-  * `OnAnalysisComplete` — UnityEvent<StockfishBridge.ChessAnalysisResult> — get — Event fired when analysis completes
-  * `OnSideToMoveChanged` — UnityEvent<char> — get — Event fired when human side changes
+  * enableEvaluation — bool — Enable/disable position evaluation (get/set)
+  * LastRawOutput — string — Last raw engine output text (get)
+  * LastAnalysisResult — ChessAnalysisResult — Complete analysis result with promotion data (get)
+  * GameHistory — List<GameHistoryEntry> — Full move history list (get)
+  * CurrentHistoryIndex — int — Current position in history for undo/redo (get)
+  * IsEngineRunning — bool — True if engine process is active and responsive (get)
+  * IsReady — bool — True if engine responded to isready command (get)
+  * HumanSide — char — Human player side 'w' or 'b' with event firing (get/set)
+  * EngineSide — char — Engine side opposite of human (get)
+  * OnEngineLine — UnityEvent<string> — Event for each engine output line (get)
+  * OnAnalysisComplete — UnityEvent<ChessAnalysisResult> — Event when analysis completes (get)
+  * OnSideToMoveChanged — UnityEvent<char> — Event when human side changes (get)
 
 * **Public methods:**
   * **Signature:** `public void StartEngine()`
-  * **Description:** Starts the Stockfish engine process from StreamingAssets.
+  * **Description:** Starts Stockfish process and background reader thread.
   * **Parameters:** None
-  * **Returns:** void — bridge.StartEngine()
-  * **Throws:** May log errors if engine executable not found
-  * **Side effects / state changes:** Creates external process, starts background thread
-  * **Notes:** Thread-safe, handles temp file creation on Windows builds
+  * **Returns:** void — StockfishBridge.StartEngine()
+  * **Side effects / state changes:** Creates process, starts reader thread, sets up crash detection.
+  * **Complexity / performance:** O(1) process startup
+  * **Notes:** Handles executable copying on Windows builds, initializes thread-safe communication.
 
   * **Signature:** `public void StopEngine()`
-  * **Description:** Gracefully stops engine with cleanup.
+  * **Description:** Gracefully stops engine with fallback to force kill.
   * **Parameters:** None
-  * **Returns:** void — bridge.StopEngine()
-  * **Side effects / state changes:** Terminates process, joins threads, deletes temp files
-  * **Notes:** 2-second graceful shutdown timeout before force kill
+  * **Returns:** void — StockfishBridge.StopEngine()
+  * **Side effects / state changes:** Stops process, joins reader thread, cleans temp files.
+  * **Complexity / performance:** O(1) with 2s timeout for graceful shutdown
+  * **Notes:** Thread-safe cleanup, handles disposed process exceptions.
 
-  * **Signature:** `public IEnumerator AnalyzePositionCoroutine(string fen)`
-  * **Description:** Analyze position using default settings.
-  * **Parameters:** fen : string — FEN string or "startpos"
-  * **Returns:** IEnumerator — yield return bridge.AnalyzePositionCoroutine(fen) and StartCoroutine(bridge.AnalyzePositionCoroutine(fen)) — Duration varies by position complexity (2-10 seconds typical)
-  * **Side effects / state changes:** Updates LastAnalysisResult, fires OnAnalysisComplete event
-  * **Notes:** Non-blocking coroutine, handles engine crashes, timeout detection
-
-  * **Signature:** `public IEnumerator AnalyzePositionCoroutine(string fen, int movetimeMs, int searchDepth, int evaluationDepth, int elo, int skillLevel)`
-  * **Description:** Comprehensive position analysis with full configuration.
+  * **Signature:** `public IEnumerator AnalyzePositionCoroutine(string fen, int movetimeMs = -1, int searchDepth = 12, int evaluationDepth = 15, int elo = 1500, int skillLevel = 8)`
+  * **Description:** Comprehensive chess analysis with promotion detection and evaluation.
   * **Parameters:** 
-    * fen : string — Position FEN or "startpos"
-    * movetimeMs : int — Time limit in milliseconds (-1 for depth-based)
-    * searchDepth : int — Search depth (1-30, typical 8-15)
-    * evaluationDepth : int — Evaluation depth for probability calculation
-    * elo : int — Engine Elo rating limit (100-3600, -1 for unlimited)
-    * skillLevel : int — Skill level 0-20 (0=weakest, 20=strongest)
-  * **Returns:** IEnumerator — yield return bridge.AnalyzePositionCoroutine(fen, 1000, 12, 15, 1500, 8) and StartCoroutine(bridge.AnalyzePositionCoroutine(fen, 1000, 12, 15, 1500, 8)) — Duration controlled by movetimeMs or position complexity
-  * **Throws:** Sets error in result if FEN invalid or engine crashes
-  * **Side effects / state changes:** Configures engine strength, updates analysis result with comprehensive data
-  * **Complexity / performance:** O(exponential) in search depth, typical 0.1-30 seconds
-  * **Notes:** Research-based evaluation conversion, full promotion parsing, crash recovery
-
-  * **Signature:** `public void SetHumanSide(char side)`
-  * **Description:** Set which side human controls.
-  * **Parameters:** side : char — 'w' for white, 'b' for black
-  * **Returns:** void — bridge.SetHumanSide('w')
-  * **Side effects / state changes:** Updates HumanSide property, fires OnSideToMoveChanged event
-  * **Notes:** Validates input, logs errors for invalid sides
+    - fen : string — FEN position or "startpos"
+    - movetimeMs : int — Analysis time limit (-1 for depth)
+    - searchDepth : int — Search depth for best move
+    - evaluationDepth : int — Depth for position evaluation
+    - elo : int — Engine strength Elo rating
+    - skillLevel : int — Skill level 0-20 (overrides Elo)
+  * **Returns:** IEnumerator — yield return StockfishBridge.AnalyzePositionCoroutine(fen, 5000, 15, 20, 2000, 10) or StartCoroutine(StockfishBridge.AnalyzePositionCoroutine(fen, 5000, 15, 20, 2000, 10))
+  * **Throws:** No exceptions thrown, errors stored in ChessAnalysisResult.errorMessage
+  * **Side effects / state changes:** Updates LastAnalysisResult, fires OnAnalysisComplete event, sends UCI commands.
+  * **Complexity / performance:** O(depth^branching) engine search, timeout protection
+  * **Notes:** Detects promotions (e7e8q format), calculates win probabilities, handles mate scores, crash recovery.
 
   * **Signature:** `public void AddMoveToHistory(string fen, ChessMove move, string notation, float evaluation)`
-  * **Description:** Add move to game history with automatic truncation.
+  * **Description:** Adds move to game history with automatic truncation for redo branches.
   * **Parameters:**
-    * fen : string — Position before move
-    * move : ChessMove — Move object
-    * notation : string — Human-readable notation
-    * evaluation : float — Position evaluation
-  * **Returns:** void — bridge.AddMoveToHistory(fen, move, "e4", 0.3f)
-  * **Side effects / state changes:** Updates GameHistory list, manages history size limit
-  * **Notes:** Truncates future moves if not at end, enforces maxHistorySize limit
-
-  * **Signature:** `public StockfishBridge.GameHistoryEntry UndoMove()`
-  * **Description:** Undo last move in history.
-  * **Parameters:** None
-  * **Returns:** StockfishBridge.GameHistoryEntry — var entry = bridge.UndoMove() — Returns move data or null if no moves to undo
-  * **Side effects / state changes:** Decrements CurrentHistoryIndex
-  * **Notes:** Does not apply move to board, only manages history pointer
-
-  * **Signature:** `public StockfishBridge.GameHistoryEntry RedoMove()`
-  * **Description:** Redo next move in history.
-  * **Parameters:** None
-  * **Returns:** StockfishBridge.GameHistoryEntry — var entry = bridge.RedoMove() — Returns move data or null if no moves to redo
-  * **Side effects / state changes:** Increments CurrentHistoryIndex
-  * **Notes:** Only works if previous undo operations exist
+    - fen : string — Position before the move
+    - move : ChessMove — The move that was played
+    - notation : string — Human-readable notation (e.g., "e4", "Nf3")
+    - evaluation : float — Position evaluation after move
+  * **Returns:** void — StockfishBridge.AddMoveToHistory(fen, move, "e4", 0.3f)
+  * **Side effects / state changes:** Modifies GameHistory list, updates CurrentHistoryIndex, enforces maxHistorySize limit.
+  * **Complexity / performance:** O(1) for append, O(n) when history limit exceeded
+  * **Notes:** Truncates future moves when adding to middle of history, thread-safe access.
 
 ### `StockfishBridge.ChessAnalysisResult`
-* **Kind:** class
-* **Responsibility:** Comprehensive chess analysis result with promotion parsing and evaluation.
-* **Constructor(s):** Default parameterless constructor
+* **Kind:** class (nested in StockfishBridge)
+* **Responsibility:** Complete analysis result containing move data, evaluation, promotion details, and game state.
+* **Constructor(s):** Default constructor initializes all fields to safe defaults
 * **Public properties / fields:**
-  * `bestMove` — string — get/set — Best move in UCI format or special values
-  * `sideToMove` — char — get/set — Side to move ('w' or 'b')
-  * `currentFen` — string — get/set — Current position FEN
-  * `whiteWinProbability` — float — get/set — White win probability (0-1)
-  * `sideToMoveWinProbability` — float — get/set — Current side win probability (0-1)
-  * `centipawnEvaluation` — float — get/set — Raw centipawn evaluation score
-  * `isMateScore` — bool — get/set — True if evaluation indicates mate
-  * `mateDistance` — int — get/set — Moves to mate (+ white, - black)
-  * `isGameEnd` — bool — get/set — True if checkmate or stalemate
-  * `isCheckmate` — bool — get/set — True if position is checkmate
-  * `isStalemate` — bool — get/set — True if position is stalemate
-  * `inCheck` — bool — get/set — True if side to move in check
-  * `isPromotion` — bool — get/set — True if bestMove is promotion
-  * `promotionPiece` — char — get/set — Promotion piece character
-  * `promotionFrom` — v2 — get/set — Source square of promotion
-  * `promotionTo` — v2 — get/set — Target square of promotion
-  * `isPromotionCapture` — bool — get/set — True if promotion captures
-  * `errorMessage` — string — get/set — Error details if analysis failed
-  * `rawEngineOutput` — string — get/set — Full engine response for debugging
-  * `searchDepth` — int — get/set — Depth used for move search
-  * `evaluationDepth` — int — get/set — Depth used for evaluation
-  * `skillLevel` — int — get/set — Skill level used (-1 if disabled)
-  * `approximateElo` — int — get/set — Estimated Elo based on settings
-  * `analysisTimeMs` — float — get/set — Time taken for analysis
+  * bestMove — string — Best move in UCI format or special values ("check-mate", "stale-mate", "ERROR: message") (get/set)
+  * sideToMove — char — Current side to move 'w' or 'b' (get/set)
+  * currentFen — string — Position FEN that was analyzed (get/set)
+  * whiteWinProbability — float — White's win probability 0.0-1.0 based on logistic evaluation (get/set)
+  * sideToMoveWinProbability — float — Current side's win probability 0.0-1.0 (get/set)
+  * centipawnEvaluation — float — Raw centipawn score (positive = white advantage) (get/set)
+  * isMateScore — bool — True if evaluation represents forced mate (get/set)
+  * mateDistance — int — Moves to mate (+ white mates, - black mates) (get/set)
+  * isGameEnd — bool — True for checkmate or stalemate positions (get/set)
+  * isCheckmate — bool — True if position is checkmate (get/set)
+  * isStalemate — bool — True if position is stalemate (get/set)
+  * inCheck — bool — True if side to move is in check (get/set)
+  * isPromotion — bool — True if bestMove is a promotion move (get/set)
+  * promotionPiece — char — Promotion piece ('q','r','b','n' or uppercase) (get/set)
+  * promotionFrom — v2 — Source square of promotion move (get/set)
+  * promotionTo — v2 — Target square of promotion move (get/set)
+  * isPromotionCapture — bool — True if promotion includes capture (diagonal move) (get/set)
+  * errorMessage — string — Detailed error description if analysis failed (get/set)
+  * analysisTimeMs — float — Time taken for complete analysis (get/set)
 
 * **Public methods:**
   * **Signature:** `public void ParsePromotionData()`
-  * **Description:** Parse promotion information from bestMove UCI string.
+  * **Description:** Parses UCI promotion moves with comprehensive validation.
   * **Parameters:** None
   * **Returns:** void — result.ParsePromotionData()
-  * **Side effects / state changes:** Updates all promotion-related fields based on bestMove
-  * **Notes:** Validates UCI format, rank requirements, piece types
-
-  * **Signature:** `public string GetPromotionDescription()`
-  * **Description:** Get human-readable promotion description.
-  * **Parameters:** None
-  * **Returns:** string — string desc = result.GetPromotionDescription()
-  * **Notes:** Returns empty string if not a promotion move
+  * **Side effects / state changes:** Updates all promotion-related fields based on bestMove format.
+  * **Complexity / performance:** O(1) string parsing and validation
+  * **Notes:** Validates rank requirements, piece types, and coordinate bounds for promotion moves.
 
   * **Signature:** `public ChessMove ToChessMove(ChessBoard board)`
-  * **Description:** Convert result to ChessMove object for board application.
-  * **Parameters:** board : ChessBoard — Current board state
-  * **Returns:** ChessMove — ChessMove move = result.ToChessMove(board)
-  * **Notes:** Returns invalid move for errors or game-end states
-
-  * **Signature:** `public string GetEvaluationDisplay()`
-  * **Description:** Get evaluation as formatted percentage string.
-  * **Parameters:** None
-  * **Returns:** string — string eval = result.GetEvaluationDisplay()
-  * **Notes:** Shows mate information or win probability percentage
+  * **Description:** Converts analysis result to ChessMove for game application.
+  * **Parameters:** board : ChessBoard — Current board state for move validation
+  * **Returns:** ChessMove — ChessMove.ToChessMove(board) where board is ChessBoard instance
+  * **Notes:** Returns ChessMove.Invalid() for errors or game end states.
 
 ### `StockfishBridge.GameHistoryEntry`
-* **Kind:** class
-* **Responsibility:** Single move entry in game history with metadata.
-* **Constructor(s):** `GameHistoryEntry(string fen, ChessMove move, string notation, float evaluation)` — Creates entry with move data
+* **Kind:** class (nested in StockfishBridge)
+* **Responsibility:** Single move entry in game history for undo/redo functionality.
+* **Constructor(s):** `GameHistoryEntry(string fen, ChessMove move, string notation, float evaluation)` — Creates history entry with timestamp
 * **Public properties / fields:**
-  * `fen` — string — get/set — Position before the move
-  * `move` — ChessMove — get/set — Move object that was played
-  * `moveNotation` — string — get/set — Human-readable move notation
-  * `evaluationScore` — float — get/set — Position evaluation after move
-  * `timestamp` — DateTime — get/set — When move was made
+  * fen — string — Position before the move (get/set)
+  * move — ChessMove — The move that was made (get/set)
+  * moveNotation — string — Human-readable move notation (get/set)
+  * evaluationScore — float — Position evaluation after move (get/set)
+  * timestamp — DateTime — When the move was made (get/set)
 
 ## MonoBehaviour special rules
-
 **Note: MonoBehaviour**
 
-* **Awake()** - Called on script load. Initializes Stockfish engine (calls StartEngine()), starts initialization coroutine (StartCoroutine(InitializeEngineOnAwake())), and sets static debug logging flag. Does not access Unity scene objects.
+* **Awake()** - Called on script load. Initializes engine by calling StartEngine(), starts initialization coroutine InitializeEngineOnAwake(), and sets static debug logging flag enableDebugLogging_static.
 
-* **Update()** - Called every frame. Processes incoming engine communication queue (drains incomingLines), fires OnEngineLine events for each message, tracks analysis completion state, and updates IsReady status. Critical for non-blocking engine communication.
+* **Update()** - Called every frame. Drains incomingLines queue and fires OnEngineLine events, tracks engine readiness from "readyok" responses, manages request completion detection for waitingForBestMove state, and updates LastRawOutput when bestmove received.
 
-* **OnApplicationQuit()** - Called before application termination. Ensures graceful engine shutdown (calls StopEngine()) to prevent orphaned processes and cleanup temporary files. Essential for proper resource cleanup.
+* **OnApplicationQuit()** - Called when application exits. Performs cleanup by calling StopEngine() to gracefully shutdown the engine process and clean up resources.
 
 ## Example usage
 
 ```csharp
-// namespace GPTDeepResearch required
+// Required namespaces
+using GPTDeepResearch;
+using SPACE_UTIL;
 
 // Basic engine startup and analysis
-StockfishBridge bridge = gameObject.GetComponent<StockfishBridge>(); // or use from [SerilizedField]
+StockfishBridge bridge = GetComponent<StockfishBridge>();
 bridge.StartEngine();
 yield return bridge.InitializeEngineCoroutine();
 
-// Analyze starting position with defaults
+// Analyze starting position
 yield return bridge.AnalyzePositionCoroutine("startpos");
-Debug.Log($"Best move: {bridge.LastAnalysisResult.bestMove}");
-Debug.Log($"Evaluation: {bridge.LastAnalysisResult.GetEvaluationDisplay()}");
+ChessAnalysisResult result = bridge.LastAnalysisResult;
+Debug.Log($"Best move: {result.bestMove}, Win probability: {result.whiteWinProbability:P1}");
 
-// Advanced analysis with custom settings
-yield return bridge.AnalyzePositionCoroutine(
-    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 
-    -1,    // not based on time limit
-    12,    // search depth
-    12,    // evaluation depth  
-    1800,  // 1800 Elo limit
-    12     // skill level 12
-);
-
-// Check for promotion moves
-if (bridge.LastAnalysisResult.isPromotion) {
-    Debug.Log($"Promotion: {bridge.LastAnalysisResult.GetPromotionDescription()}");
+// Handle promotion moves
+if (result.isPromotion) {
+    Debug.Log($"Promotion: {result.GetPromotionDescription()}");
+    ChessMove move = result.ToChessMove(currentBoard);
 }
 ```
 
-## Control flow / responsibilities & high-level algorithm summary / Side effects and I/O
+## Control flow / responsibilities & high-level algorithm summary
+Engine manages UCI communication via background thread, processes analysis requests with timeout protection, parses promotion moves with validation, calculates win probabilities using logistic function.
 
-Non-blocking UCI communication via background threads with main-thread event processing. Manages external Stockfish process lifecycle, handles comprehensive position analysis with promotion parsing using research-based evaluation conversion, maintains game history with undo/redo, and provides crash detection/recovery. File I/O for engine executable, process creation/termination, thread synchronization via concurrent queues.
+## Side effects and I/O
+File I/O for executable copying, process creation/termination, thread management, Unity event system integration, temporary file cleanup, console logging.
 
-## Performance, allocations, and hotspots / Threading / async considerations
+## Performance, allocations, and hotspots
+Background reader thread, string allocations in parsing, ConcurrentQueue operations.
 
-Heavy: position analysis O(exponential) in depth, string parsing allocations. Background reader thread, main-thread-only Unity API access, thread-safe communication queues, process I/O blocking operations.
+## Threading / async considerations
+Thread-safe communication queues, background reader thread, volatile crash detection, lock-based request tracking.
 
 ## Security / safety / correctness concerns
-
-External process execution, temp file creation, potential orphaned processes, unhandled engine crashes, thread synchronization issues, UCI command injection via user input.
+Process execution, file system access, thread synchronization, engine crash recovery, UCI command injection prevention.
 
 ## Tests, debugging & observability
-
-Built-in comprehensive test suite (RunAllTests()), debug logging via enableDebugLogging flag, OnEngineLine events for raw output monitoring, rawEngineOutput field preservation, crash detection with detailed error reporting.
+Comprehensive test suite with RunAllTests(), debug logging via enableDebugLogging, engine output events, crash detection with restart capability.
 
 ## Cross-file references
+Depends on SPACE_UTIL.v2 for coordinate representation, ChessBoard.cs for board state and coordinate conversion, ChessMove.cs for move representation and UCI parsing.
 
-Dependencies: `ChessBoard.cs` (ChessBoard class), `ChessMove.cs` (ChessMove class), `SPACE_UTIL.v2` (coordinate struct). Uses Unity Process management, threading primitives, and MonoBehaviour lifecycle.
-
-## TODO / Known limitations / Suggested improvements
-
-<!-- TODO: Add UCI_Chess960 support for Fischer Random, implement pondering mode for background analysis, add opening book integration, optimize string parsing allocations, implement analysis cancellation tokens, add network engine support for remote analysis, improve Windows-specific file handling edge cases (only if I explicitly mentioned in the prompt) -->
+<!-- ## TODO / Known limitations / Suggested improvements
+- Add support for chess960 starting positions
+- Implement engine options configuration UI
+- Add position evaluation caching
+- Support multiple concurrent analysis requests
+- Add opening book integration
+(only if I explicitly mentioned in the prompt) -->
 
 ## Appendix
-
-Key private helpers: `ParseAnalysisResult()` - processes engine output into structured results, `ConvertCentipawnsToWinProbability()` - research-based probability conversion using logistic function, `DetectAndHandleCrash()` - monitors engine health with recovery, `BackgroundReaderLoop()` - thread-safe engine communication processor.
+Core analysis flow: StartEngine() → InitializeEngineCoroutine() → AnalyzePositionCoroutine() → ParseAnalysisResult() → OnAnalysisComplete event. Background reader continuously processes engine output through thread-safe queues.
 
 ## General Note: important behaviors
+Major functionality includes promotion move parsing (e7e8q format), undo/redo game history management, engine crash detection with automatic restart, and research-based evaluation probability calculation.
 
-Major functionality: **Comprehensive Promotion Support** (UCI parsing with validation), **Advanced Evaluation Analysis** (research-based probability conversion), **Complete Game History Management** (undo/redo with size limits), **Engine Crash Recovery** (automatic detection and restart), **Non-blocking Analysis** (coroutine-based with timeout handling). Inferred: Thread safety via concurrent queues and lock mechanisms for cross-thread communication.
-
-`checksum: A7F9B2E1`
+`checksum: a1b2c3d4 (v0.1)`
