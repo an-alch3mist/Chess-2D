@@ -892,7 +892,7 @@ namespace GPTDeepResearch
 		/// Test UCI promotion parsing with comprehensive cases
 		/// Enhanced for engine integration testing
 		/// </summary>
-		public static void TestUCIPromotionParsing()
+		static void TestUCIPromotionParsing()
 		{
 			Debug.Log("<color=cyan>[ChessMove] Testing UCI promotion parsing...</color>");
 
@@ -973,7 +973,7 @@ namespace GPTDeepResearch
 		/// <summary>
 		/// Test move creation and validation
 		/// </summary>
-		public static void TestMoveCreation()
+		static void TestMoveCreation()
 		{
 			Debug.Log("<color=cyan>[ChessMove] Testing move creation...</color>");
 
@@ -1003,11 +1003,10 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[ChessMove] Move creation tests completed</color>");
 		}
 
-
 		/// <summary>
 		/// Test PGN parsing with comprehensive cases
 		/// </summary>
-		public static void TestPGNParsing()
+		static void TestPGNParsing()
 		{
 			Debug.Log("<color=cyan>[ChessMove] Testing PGN parsing...</color>");
 
@@ -1051,7 +1050,7 @@ namespace GPTDeepResearch
 		/// <summary>
 		/// Test performance optimizations
 		/// </summary>
-		public static void TestPerformanceOptimizations()
+		static void TestPerformanceOptimizations()
 		{
 			Debug.Log("<color=cyan>[ChessMove] Testing performance optimizations...</color>");
 

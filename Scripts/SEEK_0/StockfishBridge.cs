@@ -1979,11 +1979,13 @@ namespace GPTDeepResearch
 
 			TestPromotionParsing();
 			TestEloCalculation();
-			TestFENValidation();
-			TestPromotionDetection();
-			TestSideManagement();
+			TestComprehensiveAnalysis();
+
 			TestGameHistoryManagement();
 			TestEngineRestart();
+			TestSideManagement();
+			TestFENValidation();
+			TestPromotionDetection();
 
 			// Start coroutine tests
 			StartCoroutine(RunCoroutineTests());

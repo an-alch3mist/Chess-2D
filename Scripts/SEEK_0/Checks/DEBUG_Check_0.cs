@@ -22,22 +22,8 @@ namespace GPTDeepResearch
 
 		IEnumerator STIMULATE()
 		{
-			// Basic engine startup and analysis
-			StockfishBridge bridge = GetComponent<StockfishBridge>();
-			bridge.StartEngine();
-			yield return bridge.InitializeEngineCoroutine();
+			yield return null;
 
-			// Analyze starting position
-			yield return bridge.AnalyzePositionCoroutine("startpos");
-			ChessAnalysisResult result = bridge.LastAnalysisResult;
-			Debug.Log($"Best move: {result.bestMove}, Win probability: {result.whiteWinProbability:P1}");
-
-			// Handle promotion moves
-			if (result.isPromotion)
-			{
-				Debug.Log($"Promotion: {result.GetPromotionDescription()}");
-				ChessMove move = result.ToChessMove(currentBoard);
-			}
 		}
 
 	}
