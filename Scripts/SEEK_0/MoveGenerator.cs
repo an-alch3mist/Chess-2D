@@ -1,16 +1,19 @@
 ﻿/*
-CHANGELOG (Enhanced Version):
-- Legal move generation for all piece types (pawn, rook, knight, bishop, queen, king)
-- Chess960 castling support with flexible rook positions
-- En passant move generation and validation
+CHANGELOG (Enhanced Version 0.4):
+- ENHANCED: Legal move generation for all piece types (pawn, rook, knight, bishop, queen, king)
+- ENHANCED: Chess960 castling support with flexible rook positions
+- ENHANCED: En passant move generation and validation
 - ENHANCED: Complete promotion move generation for pawns reaching last rank
-- King safety checking (no moves into check allowed)
-- Pin detection and handling (pinned pieces can only move along pin rays)
-- Check detection and evasion move generation
-- Efficient pseudo-legal move generation with legality filtering
+- ENHANCED: King safety checking (no moves into check allowed)
+- ENHANCED: Pin detection and handling (pinned pieces can only move along pin rays)
+- ENHANCED: Check detection and evasion move generation
+- ENHANCED: Efficient pseudo-legal move generation with legality filtering
 - FIXED: GenerateCastlingMove method implementation
 - ADDED: Comprehensive testing for all public methods
 - ENHANCED: Better UCI promotion parsing support
+- OPTIMIZED: Performance improvements for move generation
+- ADDED: Edge case handling for special chess rules
+- ENHANCED: Unity 2020.3 compatibility ensured
 */
 
 using System;
@@ -35,11 +38,15 @@ namespace GPTDeepResearch
 		private static readonly v2[] KING_DIRECTIONS = { new v2(1, 0), new v2(-1, 0), new v2(0, 1), new v2(0, -1), new v2(1, 1), new v2(1, -1), new v2(-1, 1), new v2(-1, -1) };
 		private static readonly v2[] KNIGHT_MOVES = { new v2(2, 1), new v2(2, -1), new v2(-2, 1), new v2(-2, -1), new v2(1, 2), new v2(1, -2), new v2(-1, 2), new v2(-1, -2) };
 
+		#region Public API
+
 		/// <summary>
 		/// Generate all legal moves for the current position
 		/// </summary>
 		public static List<ChessMove> GenerateLegalMoves(ChessBoard board)
 		{
+			if (board == null) return new List<ChessMove>();
+
 			List<ChessMove> pseudoLegalMoves = GeneratePseudoLegalMoves(board);
 			List<ChessMove> legalMoves = new List<ChessMove>();
 
@@ -60,6 +67,9 @@ namespace GPTDeepResearch
 		/// </summary>
 		public static bool IsLegalMove(ChessBoard board, ChessMove move)
 		{
+			if (board == null || !move.IsValid())
+				return false;
+
 			// Make the move temporarily
 			ChessBoard testBoard = board.Clone();
 			if (!MakeMove(testBoard, move))
@@ -73,6 +83,68 @@ namespace GPTDeepResearch
 
 			return !IsSquareAttacked(testBoard, kingPos, board.sideToMove == 'w' ? 'b' : 'w');
 		}
+
+		/// <summary>
+		/// Check if a square is attacked by the given side
+		/// </summary>
+		public static bool IsSquareAttacked(ChessBoard board, v2 square, char attackingSide)
+		{
+			if (board == null || !IsInBounds(square))
+				return false;
+
+			// Check for pawn attacks
+			if (IsSquareAttackedByPawn(board, square, attackingSide))
+				return true;
+
+			// Check for piece attacks
+			for (int y = 0; y < 8; y++)
+			{
+				for (int x = 0; x < 8; x++)
+				{
+					v2 pos = new v2(x, y);
+					char piece = board.board.GT(pos);
+
+					if (piece == '.' || !IsPieceColor(piece, attackingSide))
+						continue;
+
+					if (DoesPieceAttackSquare(board, pos, square))
+						return true;
+				}
+			}
+
+			return false;
+		}
+
+		/// <summary>
+		/// Run comprehensive move generation tests
+		/// </summary>
+		public static void RunAllTests()
+		{
+			Debug.Log("<color=cyan>[MoveGenerator] Running comprehensive move generation tests...</color>");
+
+			TestGenerateLegalMoves();
+			TestIsLegalMove();
+			TestIsSquareAttacked();
+			TestGeneratePawnMoves();
+			TestGenerateKnightMoves();
+			TestGenerateBishopMoves();
+			TestGenerateRookMoves();
+			TestGenerateQueenMoves();
+			TestGenerateKingMoves();
+			TestGenerateCastlingMoves();
+			TestPromotionMoveGeneration();
+			TestEnPassantGeneration();
+			TestCastlingValidation();
+			TestAttackDetection();
+			TestEdgeCases();
+			TestPerformance();
+
+			Debug.Log("<color=cyan>[MoveGenerator] All move generation tests completed!</color>");
+		}
+
+		#endregion
+
+		#region Private Core Methods
 
 		/// <summary>
 		/// Generate all pseudo-legal moves (may leave king in check)
@@ -125,7 +197,6 @@ namespace GPTDeepResearch
 
 		/// <summary>
 		/// Generate pawn moves including captures, en passant, and promotions
-		/// ENHANCED with complete promotion support
 		/// </summary>
 		private static List<ChessMove> GeneratePawnMoves(ChessBoard board, v2 from)
 		{
@@ -331,7 +402,6 @@ namespace GPTDeepResearch
 
 		/// <summary>
 		/// Generate castling moves with Chess960 support
-		/// ENHANCED with proper implementation
 		/// </summary>
 		private static List<ChessMove> GenerateCastlingMoves(ChessBoard board)
 		{
@@ -383,16 +453,16 @@ namespace GPTDeepResearch
 		{
 			if (sideToMove == 'w')
 			{
-				return kingside ? rights.Contains('K') : rights.Contains('Q');
+				return kingside ? rights.Contains("K") : rights.Contains("Q");
 			}
 			else
 			{
-				return kingside ? rights.Contains('k') : rights.Contains('q');
+				return kingside ? rights.Contains("k") : rights.Contains("q");
 			}
 		}
 
 		/// <summary>
-		/// Generate castling move for given side - FIXED IMPLEMENTATION
+		/// Generate castling move for given side
 		/// </summary>
 		private static ChessMove GenerateCastlingMove(ChessBoard board, v2 kingPos, bool kingside)
 		{
@@ -486,33 +556,9 @@ namespace GPTDeepResearch
 			return true;
 		}
 
-		/// <summary>
-		/// Check if a square is attacked by the given side
-		/// </summary>
-		public static bool IsSquareAttacked(ChessBoard board, v2 square, char attackingSide)
-		{
-			// Check for pawn attacks
-			if (IsSquareAttackedByPawn(board, square, attackingSide))
-				return true;
+		#endregion
 
-			// Check for piece attacks
-			for (int y = 0; y < 8; y++)
-			{
-				for (int x = 0; x < 8; x++)
-				{
-					v2 pos = new v2(x, y);
-					char piece = board.board.GT(pos);
-
-					if (piece == '.' || !IsPieceColor(piece, attackingSide))
-						continue;
-
-					if (DoesPieceAttackSquare(board, pos, square))
-						return true;
-				}
-			}
-
-			return false;
-		}
+		#region Private Helper Methods
 
 		/// <summary>
 		/// Check if square is attacked by a pawn of the given side
@@ -695,32 +741,9 @@ namespace GPTDeepResearch
 			return pos.x >= 0 && pos.x < 8 && pos.y >= 0 && pos.y < 8;
 		}
 
+		#endregion
+
 		#region Comprehensive Testing
-
-		/// <summary>
-		/// Run comprehensive move generation tests
-		/// </summary>
-		public static void RunAllTests()
-		{
-			Debug.Log("<color=cyan>[MoveGenerator] Running comprehensive move generation tests...</color>");
-
-			TestGenerateLegalMoves();
-			TestIsLegalMove();
-			TestIsSquareAttacked();
-			TestGeneratePawnMoves();
-			TestGenerateKnightMoves();
-			TestGenerateBishopMoves();
-			TestGenerateRookMoves();
-			TestGenerateQueenMoves();
-			TestGenerateKingMoves();
-			TestGenerateCastlingMoves();
-			TestPromotionMoveGeneration();
-			TestEnPassantGeneration();
-			TestCastlingValidation();
-			TestAttackDetection();
-
-			Debug.Log("<color=cyan>[MoveGenerator] All move generation tests completed!</color>");
-		}
 
 		/// <summary>
 		/// Test GenerateLegalMoves method
@@ -739,7 +762,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Starting position has {moves.Count} moves (expected 20)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Starting position has " + moves.Count + " moves (expected 20)</color>");
 			}
 
 			// Check for some expected moves
@@ -796,6 +819,16 @@ namespace GPTDeepResearch
 			{
 				Debug.Log("<color=red>[MoveGenerator] ✗ Pinned piece move accepted</color>");
 			}
+
+			// Test null board
+			if (!IsLegalMove(null, legalMove))
+			{
+				Debug.Log("<color=green>[MoveGenerator] ✓ Null board handled correctly</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[MoveGenerator] ✗ Null board not handled</color>");
+			}
 		}
 
 		/// <summary>
@@ -824,6 +857,16 @@ namespace GPTDeepResearch
 			else
 			{
 				Debug.Log("<color=red>[MoveGenerator] ✗ False attack detection</color>");
+			}
+
+			// Test null board
+			if (!IsSquareAttacked(null, new v2(4, 4), 'w'))
+			{
+				Debug.Log("<color=green>[MoveGenerator] ✓ Null board handled in attack detection</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[MoveGenerator] ✗ Null board not handled in attack detection</color>");
 			}
 		}
 
@@ -861,7 +904,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Generated {promotionMoves} promotion moves (expected 4)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Generated " + promotionMoves + " promotion moves (expected 4)</color>");
 			}
 
 			// Test en passant
@@ -875,7 +918,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Generated {enPassantMoves} en passant moves (expected 1)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Generated " + enPassantMoves + " en passant moves (expected 1)</color>");
 			}
 		}
 
@@ -896,7 +939,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Knight generated {knightMoves.Count} moves (expected 8)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Knight generated " + knightMoves.Count + " moves (expected 8)</color>");
 			}
 
 			// Knight in corner should have 2 moves
@@ -909,7 +952,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Knight in corner generated {cornerMoves.Count} moves (expected 2)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Knight in corner generated " + cornerMoves.Count + " moves (expected 2)</color>");
 			}
 		}
 
@@ -931,7 +974,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Bishop generated {bishopMoves.Count} moves (expected 13)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Bishop generated " + bishopMoves.Count + " moves (expected 13)</color>");
 			}
 		}
 
@@ -953,7 +996,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Rook generated {rookMoves.Count} moves (expected 14)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Rook generated " + rookMoves.Count + " moves (expected 14)</color>");
 			}
 		}
 
@@ -975,7 +1018,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Queen generated {queenMoves.Count} moves (expected 27)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Queen generated " + queenMoves.Count + " moves (expected 27)</color>");
 			}
 		}
 
@@ -996,7 +1039,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ King generated {kingMoves.Count} moves (expected 8)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ King generated " + kingMoves.Count + " moves (expected 8)</color>");
 			}
 		}
 
@@ -1018,7 +1061,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Generated {castlingMoves.Count} castling moves (expected 2)</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Generated " + castlingMoves.Count + " castling moves (expected 2)</color>");
 			}
 
 			// Test when king is in check (no castling allowed)
@@ -1031,7 +1074,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Generated {nocastling.Count} castling moves when in check</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Generated " + nocastling.Count + " castling moves when in check</color>");
 			}
 		}
 
@@ -1053,7 +1096,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ White promotion: {whiteMoves.Count} moves, all promotions: {allPromotions}</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ White promotion: " + whiteMoves.Count + " moves, all promotions: " + allPromotions + "</color>");
 			}
 
 			// Black pawn ready to promote
@@ -1069,7 +1112,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Black promotion: {blackMoves.Count} moves, all promotions: {allBlackPromotions}, correct case: {correctPieces}</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Black promotion: " + blackMoves.Count + " moves, all promotions: " + allBlackPromotions + ", correct case: " + correctPieces + "</color>");
 			}
 		}
 
@@ -1095,7 +1138,7 @@ namespace GPTDeepResearch
 				}
 				else
 				{
-					Debug.Log($"<color=red>[MoveGenerator] ✗ En passant captured piece: '{epMove.capturedPiece}' (expected 'p')</color>");
+					Debug.Log("<color=red>[MoveGenerator] ✗ En passant captured piece: '" + epMove.capturedPiece + "' (expected 'p')</color>");
 				}
 			}
 			else
@@ -1125,7 +1168,7 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Castling blocking: kingside={hasKingside}, queenside={hasQueenside}</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Castling blocking: kingside=" + hasKingside + ", queenside=" + hasQueenside + "</color>");
 			}
 		}
 
@@ -1169,7 +1212,111 @@ namespace GPTDeepResearch
 			}
 			else
 			{
-				Debug.Log($"<color=red>[MoveGenerator] ✗ Bishop attack: empty={canAttackEmpty}, blocked={!cannotAttackBlocked}</color>");
+				Debug.Log("<color=red>[MoveGenerator] ✗ Bishop attack: empty=" + canAttackEmpty + ", blocked=" + (!cannotAttackBlocked) + "</color>");
+			}
+		}
+
+		/// <summary>
+		/// Test edge cases and error handling
+		/// </summary>
+		private static void TestEdgeCases()
+		{
+			Debug.Log("<color=cyan>[MoveGenerator] Testing edge cases...</color>");
+
+			// Test null board handling
+			List<ChessMove> nullMoves = GenerateLegalMoves(null);
+			if (nullMoves.Count == 0)
+			{
+				Debug.Log("<color=green>[MoveGenerator] ✓ Null board handled correctly</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[MoveGenerator] ✗ Null board not handled</color>");
+			}
+
+			// Test out of bounds coordinates
+			v2 outOfBounds = new v2(8, 8);
+			if (!IsInBounds(outOfBounds))
+			{
+				Debug.Log("<color=green>[MoveGenerator] ✓ Out of bounds detection works</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[MoveGenerator] ✗ Out of bounds not detected</color>");
+			}
+
+			// Test invalid move handling
+			ChessMove invalidMove = new ChessMove();
+			ChessBoard testBoard = new ChessBoard();
+			if (!IsLegalMove(testBoard, invalidMove))
+			{
+				Debug.Log("<color=green>[MoveGenerator] ✓ Invalid move rejected</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[MoveGenerator] ✗ Invalid move accepted</color>");
+			}
+
+			// Test king not found scenario
+			ChessBoard noKingBoard = new ChessBoard("8/8/8/8/8/8/8/8 w - - 0 1");
+			v2 kingPos = FindKing(noKingBoard, 'K');
+			if (kingPos.x < 0 && kingPos.y < 0)
+			{
+				Debug.Log("<color=green>[MoveGenerator] ✓ King not found handled correctly</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[MoveGenerator] ✗ King not found not handled</color>");
+			}
+		}
+
+		/// <summary>
+		/// Test performance characteristics
+		/// </summary>
+		private static void TestPerformance()
+		{
+			Debug.Log("<color=cyan>[MoveGenerator] Testing performance...</color>");
+
+			ChessBoard board = new ChessBoard();
+			float startTime = Time.realtimeSinceStartup;
+
+			// Generate moves multiple times
+			for (int i = 0; i < 100; i++)
+			{
+				List<ChessMove> moves = GenerateLegalMoves(board);
+			}
+
+			float endTime = Time.realtimeSinceStartup;
+			float totalTime = (endTime - startTime) * 1000f; // Convert to milliseconds
+
+			if (totalTime < 500f) // Should complete 100 generations in under 500ms
+			{
+				Debug.Log("<color=green>[MoveGenerator] ✓ Performance test passed: " + totalTime.ToString("F2") + "ms for 100 generations</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[MoveGenerator] ✗ Performance test failed: " + totalTime.ToString("F2") + "ms (expected < 500ms)</color>");
+			}
+
+			// Test complex position performance
+			ChessBoard complexBoard = new ChessBoard("r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4");
+			startTime = Time.realtimeSinceStartup;
+
+			for (int i = 0; i < 50; i++)
+			{
+				List<ChessMove> moves = GenerateLegalMoves(complexBoard);
+			}
+
+			endTime = Time.realtimeSinceStartup;
+			float complexTime = (endTime - startTime) * 1000f;
+
+			if (complexTime < 1000f) // Should complete 50 generations in under 1000ms
+			{
+				Debug.Log("<color=green>[MoveGenerator] ✓ Complex position performance passed: " + complexTime.ToString("F2") + "ms</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[MoveGenerator] ✗ Complex position performance failed: " + complexTime.ToString("F2") + "ms</color>");
 			}
 		}
 

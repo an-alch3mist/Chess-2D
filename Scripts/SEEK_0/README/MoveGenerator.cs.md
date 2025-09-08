@@ -1,77 +1,77 @@
-# Source: `MoveGenerator.cs` — Complete legal chess move generation with Chess960 support
+# Source: `MoveGenerator.cs` — Generates legal chess moves with Chess960 and special rules support
 
 ## Short description (2–4 sentences)
-Implements comprehensive legal chess move generation for all piece types including pawns, rooks, knights, bishops, queens, and kings. Supports standard chess rules plus Chess960 castling, en passant captures, pawn promotion, check detection, and pin handling. Uses pseudo-legal move generation followed by legality filtering to ensure no moves leave the king in check. Includes extensive testing framework with 80+ test cases covering all move types and edge cases.
+The file implements a comprehensive chess move generator that produces legal moves for all piece types in any chess position. It supports standard chess rules including castling, en passant, pawn promotion, and Chess960 variant with flexible rook positions. The generator filters pseudo-legal moves to ensure king safety and handles complex scenarios like pinned pieces and check evasion.
 
 ## Metadata
 
 * **Filename:** `MoveGenerator.cs`
 * **Primary namespace:** `GPTDeepResearch`
-* **Dependent namespace:** `SPACE_UTIL` (external namespace), `System`, `System.Collections.Generic`, `System.Linq`, `UnityEngine`
-* **Estimated lines:** 950
-* **Estimated chars:** 38,000
+* **Dependent namespace:** `SPACE_UTIL` (provides v2 coordinate type)
+* **Estimated lines:** 1400
+* **Estimated chars:** 58000
 * **Public types:** `MoveGenerator (static class)`
-* **Unity version / Target framework:** Unity 2020.3+ / .NET Standard 2.0
-* **Dependencies:** `ChessBoard.cs`, `ChessMove.cs`, `SPACE_UTIL.v2` (SPACE_UTIL is external namespace)
+* **Unity version / Target framework:** Unity 2020.3 / .NET Standard 2.0
+* **Dependencies:** `ChessBoard.cs`, `ChessMove.cs`, `SPACE_UTIL.v2` (SPACE_UTIL is external namespace), `UnityEngine.Debug`
 
 ## Public API summary (table)
 
 | **Type** | **Member** | **Signature** | **Short purpose** | **OneLiner Call** |
 |----------|------------|---------------|-------------------|-------------------|
-| List<ChessMove> | GenerateLegalMoves | `public static List<ChessMove> GenerateLegalMoves(ChessBoard board)` | Generate all legal moves for current position | `var moves = MoveGenerator.GenerateLegalMoves(board);` |
-| bool | IsLegalMove | `public static bool IsLegalMove(ChessBoard board, ChessMove move)` | Check if move is legal (doesn't leave king in check) | `bool isLegal = MoveGenerator.IsLegalMove(board, move);` |
-| bool | IsSquareAttacked | `public static bool IsSquareAttacked(ChessBoard board, v2 square, char attackingSide)` | Check if square is under attack by given side | `bool attacked = MoveGenerator.IsSquareAttacked(board, pos, 'w');` |
-| void | RunAllTests | `public static void RunAllTests()` | Execute comprehensive test suite for all methods | `MoveGenerator.RunAllTests();` |
+| List&lt;ChessMove&gt; | GenerateLegalMoves | `public static List<ChessMove> GenerateLegalMoves(ChessBoard board)` | Generate all legal moves for current position | `List<ChessMove> moves = MoveGenerator.GenerateLegalMoves(board);` |
+| bool | IsLegalMove | `public static bool IsLegalMove(ChessBoard board, ChessMove move)` | Check if move is legal (doesn't leave king in check) | `bool legal = MoveGenerator.IsLegalMove(board, move);` |
+| bool | IsSquareAttacked | `public static bool IsSquareAttacked(ChessBoard board, v2 square, char attackingSide)` | Check if square is attacked by given side | `bool attacked = MoveGenerator.IsSquareAttacked(board, square, 'w');` |
+| void | RunAllTests | `public static void RunAllTests()` | Run comprehensive move generation tests | `MoveGenerator.RunAllTests();` |
 
 ## Important types — details
 
 ### `MoveGenerator` (static class)
 * **Kind:** static class
-* **Responsibility:** Provides chess move generation algorithms and validation for legal gameplay.
+* **Responsibility:** Provides chess move generation functionality with full rule compliance including special moves and Chess960 support.
 * **Constructor(s):** N/A (static class)
 * **Public properties / fields:** None
-* **Public methods:**
+* **Public methods:** 
   * **Signature:** `public static List<ChessMove> GenerateLegalMoves(ChessBoard board)`
     * **Description:** Generates all legal moves for the current position by filtering pseudo-legal moves.
     * **Parameters:** 
-      * board : ChessBoard — Chess position to analyze
-    * **Returns:** `List<ChessMove> moves = MoveGenerator.GenerateLegalMoves(board);`
-    * **Throws:** None explicitly
+      * board : ChessBoard — the chess position to analyze
+    * **Returns:** List&lt;ChessMove&gt; — list of legal moves, example: `List<ChessMove> moves = MoveGenerator.GenerateLegalMoves(board);`
+    * **Throws:** Returns empty list if board is null
     * **Side effects / state changes:** None (pure function)
-    * **Complexity / performance:** O(n*m) where n=pieces, m=avg moves per piece
-    * **Notes:** Uses two-phase generation: pseudo-legal then legality filtering
-  
+    * **Complexity / performance:** O(n²) where n is number of pieces, includes legality checking
+    * **Notes:** Handles all piece types, special moves, and king safety validation
+
   * **Signature:** `public static bool IsLegalMove(ChessBoard board, ChessMove move)`
-    * **Description:** Validates if a move is legal by checking if it leaves own king in check.
+    * **Description:** Validates if a move is legal by temporarily making it and checking for king safety.
     * **Parameters:**
-      * board : ChessBoard — Current position
-      * move : ChessMove — Move to validate
-    * **Returns:** `bool isLegal = MoveGenerator.IsLegalMove(board, move);`
-    * **Throws:** None explicitly
-    * **Side effects / state changes:** Creates temporary board copy for testing
-    * **Complexity / performance:** O(k) where k=enemy pieces that can attack king
-    * **Notes:** Makes temporary move on cloned board to test legality
-  
+      * board : ChessBoard — current position
+      * move : ChessMove — move to validate
+    * **Returns:** bool — true if legal, example: `bool legal = MoveGenerator.IsLegalMove(board, move);`
+    * **Throws:** Returns false for null board or invalid move
+    * **Side effects / state changes:** Temporarily modifies board clone for validation
+    * **Complexity / performance:** O(n) for attack detection after move simulation
+    * **Notes:** Uses board cloning and temporary move execution
+
   * **Signature:** `public static bool IsSquareAttacked(ChessBoard board, v2 square, char attackingSide)`
-    * **Description:** Determines if a square is under attack by pieces of the given side.
+    * **Description:** Determines if a square is under attack by pieces of the specified side.
     * **Parameters:**
-      * board : ChessBoard — Current position
-      * square : v2 — Target square coordinates
+      * board : ChessBoard — current position
+      * square : v2 — square coordinates to check
       * attackingSide : char — 'w' or 'b' for attacking side
-    * **Returns:** `bool attacked = MoveGenerator.IsSquareAttacked(board, pos, 'w');`
-    * **Throws:** None explicitly
+    * **Returns:** bool — true if attacked, example: `bool attacked = MoveGenerator.IsSquareAttacked(board, square, 'w');`
+    * **Throws:** Returns false for null board or out-of-bounds square
     * **Side effects / state changes:** None (pure function)
-    * **Complexity / performance:** O(64) worst case checking all squares for attackers
-    * **Notes:** Used for castling validation and check detection
-  
+    * **Complexity / performance:** O(n) where n is number of attacking pieces
+    * **Notes:** Checks all piece attack patterns including pawns, sliding pieces, knights
+
   * **Signature:** `public static void RunAllTests()`
-    * **Description:** Executes comprehensive test suite covering all move generation functionality.
+    * **Description:** Executes comprehensive test suite for all move generation functionality.
     * **Parameters:** None
-    * **Returns:** `MoveGenerator.RunAllTests();`
-    * **Throws:** None explicitly
-    * **Side effects / state changes:** Outputs test results via Debug.Log with color coding
-    * **Complexity / performance:** O(1) constant test scenarios
-    * **Notes:** Validates 80+ test cases including edge cases and special moves
+    * **Returns:** void — outputs test results to Unity console, example: `MoveGenerator.RunAllTests();`
+    * **Throws:** None
+    * **Side effects / state changes:** Logs test results to Unity Debug console with color-coded output
+    * **Complexity / performance:** O(k) where k is number of test cases, includes performance benchmarks
+    * **Notes:** Tests all public methods, edge cases, and performance characteristics
 
 ## Example usage
 
@@ -79,6 +79,7 @@ Implements comprehensive legal chess move generation for all piece types includi
 // Required namespaces:
 // using System;
 // using System.Collections.Generic;
+// using System.Linq;
 // using UnityEngine;
 // using GPTDeepResearch;
 // using SPACE_UTIL;
@@ -87,97 +88,95 @@ public class ExampleUsage : MonoBehaviour
 {
     private void MoveGenerator_Check()
     {
-        // Initialize chess board in starting position
+        // Initialize starting position
         ChessBoard board = new ChessBoard();
         
-        // Generate all legal moves for current position
-        List<ChessMove> legalMoves = MoveGenerator.GenerateLegalMoves(board);
-        Debug.Log($"<color=green>Legal moves in starting position: {legalMoves.Count}</color>");
-        // Expected output: "Legal moves in starting position: 20"
+        // Generate all legal moves
+        List<ChessMove> moves = MoveGenerator.GenerateLegalMoves(board);
+        
+        // Expected output: "Generated 20 legal moves from starting position"
+        Debug.Log($"<color=green>Generated {moves.Count} legal moves from starting position</color>");
         
         // Check specific move legality
         ChessMove testMove = ChessMove.FromUCI("e2e4", board);
         bool isLegal = MoveGenerator.IsLegalMove(board, testMove);
-        Debug.Log($"<color=green>e2-e4 is legal: {isLegal}</color>");
-        // Expected output: "e2-e4 is legal: True"
+        
+        // Expected output: "Move e2-e4 is legal: True"
+        Debug.Log($"<color=cyan>Move e2-e4 is legal: {isLegal}</color>");
         
         // Test square attack detection
-        v2 kingPos = new v2(4, 0); // e1 square
-        bool kingAttacked = MoveGenerator.IsSquareAttacked(board, kingPos, 'b');
-        Debug.Log($"<color=green>White king under attack: {kingAttacked}</color>");
-        // Expected output: "White king under attack: False"
+        v2 kingSquare = new v2(4, 0); // e1
+        bool kingAttacked = MoveGenerator.IsSquareAttacked(board, kingSquare, 'b');
         
-        // Test promotion position
+        // Expected output: "King square e1 under attack: False"
+        Debug.Log($"<color=yellow>King square e1 under attack: {kingAttacked}</color>");
+        
+        // Test promotion scenario
         ChessBoard promoBoard = new ChessBoard("8/P7/8/8/8/8/8/k6K w - - 0 1");
         List<ChessMove> promoMoves = MoveGenerator.GenerateLegalMoves(promoBoard);
-        int promotionCount = 0;
-        foreach(ChessMove move in promoMoves)
-        {
-            if(move.moveType == ChessMove.MoveType.Promotion)
-                promotionCount++;
-        }
-        Debug.Log($"<color=green>Promotion moves generated: {promotionCount}</color>");
-        // Expected output: "Promotion moves generated: 4"
+        int promotionCount = promoMoves.Count(m => m.moveType == ChessMove.MoveType.Promotion);
+        
+        // Expected output: "Promotion moves available: 4"
+        Debug.Log($"<color=magenta>Promotion moves available: {promotionCount}</color>");
         
         // Test castling availability
-        ChessBoard castlingBoard = new ChessBoard("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
-        List<ChessMove> castlingMoves = MoveGenerator.GenerateLegalMoves(castlingBoard);
-        int castlingCount = 0;
-        foreach(ChessMove move in castlingMoves)
-        {
-            if(move.moveType == ChessMove.MoveType.Castling)
-                castlingCount++;
-        }
-        Debug.Log($"<color=green>Castling moves available: {castlingCount}</color>");
-        // Expected output: "Castling moves available: 2"
+        ChessBoard castleBoard = new ChessBoard("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+        List<ChessMove> castleMoves = MoveGenerator.GenerateLegalMoves(castleBoard);
+        int castlingCount = castleMoves.Count(m => m.moveType == ChessMove.MoveType.Castling);
         
-        // Test en passant detection
+        // Expected output: "Castling moves available: 2"
+        Debug.Log($"<color=blue>Castling moves available: {castlingCount}</color>");
+        
+        // Test en passant
         ChessBoard epBoard = new ChessBoard("8/8/8/pP6/8/8/8/k6K w - a6 0 1");
         List<ChessMove> epMoves = MoveGenerator.GenerateLegalMoves(epBoard);
-        int enPassantCount = 0;
-        foreach(ChessMove move in epMoves)
-        {
-            if(move.moveType == ChessMove.MoveType.EnPassant)
-                enPassantCount++;
-        }
-        Debug.Log($"<color=green>En passant moves: {enPassantCount}</color>");
-        // Expected output: "En passant moves: 1"
+        int enPassantCount = epMoves.Count(m => m.moveType == ChessMove.MoveType.EnPassant);
         
-        // Run comprehensive test suite
-        Debug.Log("<color=cyan>Running comprehensive move generation tests...</color>");
+        // Expected output: "En passant moves available: 1"
+        Debug.Log($"<color=green>En passant moves available: {enPassantCount}</color>");
+        
+        // Run comprehensive tests
         MoveGenerator.RunAllTests();
-        // Expected output: Multiple test result lines with pass/fail status
+        
+        // Expected output: Various colored test results showing pass/fail status
+        Debug.Log("<color=cyan>Move generation testing completed</color>");
     }
 }
 ```
 
-## Control flow / responsibilities & high-level algorithm summary
-Two-phase generation: creates pseudo-legal moves for all pieces, then filters by legality testing. Handles special moves (castling, en passant, promotion) with dedicated validation logic.
+## Control flow / responsibilities & high-level algorithm summary /Side effects and I/O
+
+Generates pseudo-legal moves for all pieces, then filters through legality checking by simulating moves and detecting check states. Uses directional vectors for sliding pieces, lookup tables for knights, special handling for pawns, castling, and en passant. Core algorithm: enumerate pieces → generate candidate moves → validate king safety.
 
 ## Performance, allocations, and hotspots / Threading / async considerations
-O(pieces × moves) complexity. Temporary board cloning for legality testing creates GC pressure. Main-thread only, no async support.
+
+Heavy list allocations during move generation, O(n²) complexity for legal filtering. Main-thread only, no threading.
 
 ## Security / safety / correctness concerns
-Relies on ChessBoard bounds checking. No null validation on input parameters.
+
+Null board handling, out-of-bounds coordinate validation, temporary board cloning for move validation.
 
 ## Tests, debugging & observability
-Comprehensive built-in test suite with 14 test methods covering all functionality. Color-coded Debug.Log output for pass/fail results.
+
+Comprehensive built-in test suite with `RunAllTests()` method covering all functionality, performance benchmarks, and edge cases with color-coded Unity Debug logging.
 
 ## Cross-file references
-Dependencies: `ChessBoard.cs` (board representation), `ChessMove.cs` (move structure), `SPACE_UTIL.v2` (coordinate system from external namespace).
 
-## TODO / Known limitations / Suggested improvements
-<!-- 
-* Consider move ordering optimization for better alpha-beta performance
-* Add support for Chess960 Fischer Random starting positions
-* Implement incremental move generation for performance
-* Add move validation caching to reduce repeated calculations
--->
+Depends on `ChessBoard.cs` for position representation, `ChessMove.cs` for move structure, `SPACE_UTIL.v2` for coordinates.
+
+<!-- ## TODO / Known limitations / Suggested improvements
+
+* No known TODOs in source code
+* Could optimize with bitboards for performance
+* Move ordering for alpha-beta integration
+* Threaded move generation for complex positions -->
 
 ## Appendix
-Key private helpers: `GeneratePseudoLegalMoves`, `GeneratePawnMoves`, `GenerateSlidingMoves`, `IsCastlingLegal`, `IsPathClear`. Contains 950+ lines with extensive piece-specific move generation logic.
+
+Key private helpers: `GeneratePseudoLegalMoves()`, `MakeMove()`, `FindKing()`, `IsPathClear()`, `GenerateSlidingMoves()` handle core generation logic and board manipulation for legality testing.
 
 ## General Note: important behaviors
-Major functionalities: Pawn promotion (all 4 pieces), En passant capture, Chess960 castling, Pin detection, Check evasion. Comprehensive test coverage with 80+ validation scenarios.
 
-`checksum: a7f4b2c1 (v0.3)`
+Major functionalities: Pawn promotion (all four pieces), castling (Chess960 compatible), en passant capture, pin detection, check evasion, comprehensive legal move filtering with king safety validation.
+
+`checksum: a7f2b9e1 v0.3`

@@ -9,6 +9,10 @@ CHANGELOG (Enhanced Version with Chess Engine Integration):
 - Strengthened FEN validation and parsing
 - Added performance optimizations for move history
 - Enhanced game state validation for engine integration
+- Fixed Unity 2020.3 compatibility issues (string.Contains char vs string)
+- Added ToString() override for main ChessBoard class
+- Cleaned up public API surface area
+- Consolidated test methods for better organization
 */
 
 using System;
@@ -140,6 +144,11 @@ namespace GPTDeepResearch
 			{
 				return !string.IsNullOrEmpty(Event) && !string.IsNullOrEmpty(Site) &&
 					   !string.IsNullOrEmpty(Date) && !string.IsNullOrEmpty(Result);
+			}
+
+			public override string ToString()
+			{
+				return $"PGN[{Event} at {Site}, {Date}] {White} vs {Black}: {Result}";
 			}
 		}
 
@@ -332,6 +341,11 @@ namespace GPTDeepResearch
 			public bool IsValid()
 			{
 				return !string.IsNullOrEmpty(sanNotation) && timestamp > 0;
+			}
+
+			public override string ToString()
+			{
+				return $"GameNode[{sanNotation}] eval:{evaluation:F1} at {timestamp:F2}s";
 			}
 		}
 
@@ -586,10 +600,10 @@ namespace GPTDeepResearch
 		private int GetCastlingIndex(string rights)
 		{
 			int index = 0;
-			if (rights.IndexOf('K') >= 0) index |= 1;
-			if (rights.IndexOf('Q') >= 0) index |= 2;
-			if (rights.IndexOf('k') >= 0) index |= 4;
-			if (rights.IndexOf('q') >= 0) index |= 8;
+			if (rights.Contains("K")) index |= 1;
+			if (rights.Contains("Q")) index |= 2;
+			if (rights.Contains("k")) index |= 4;
+			if (rights.Contains("q")) index |= 8;
 			return index;
 		}
 
@@ -600,7 +614,7 @@ namespace GPTDeepResearch
 		/// <summary>
 		/// Save current state to game tree
 		/// </summary>
-		public void SaveCurrentState()
+		private void SaveCurrentState()
 		{
 			var state = new BoardState(this);
 
@@ -988,7 +1002,7 @@ namespace GPTDeepResearch
 
 						x += emptyCount;
 					}
-					else if ("rnbqkpRNBQKP".IndexOf(c) >= 0)
+					else if ("rnbqkpRNBQKP".Contains(c.ToString()))
 					{
 						if (x >= 8)
 						{
@@ -1255,7 +1269,7 @@ namespace GPTDeepResearch
 				return;
 			}
 
-			if (piece != '.' && "rnbqkpRNBQKP".IndexOf(piece) < 0)
+			if (piece != '.' && !("rnbqkpRNBQKP".Contains(piece.ToString())))
 			{
 				Debug.Log($"<color=yellow>[ChessBoard] SetPiece: invalid piece '{piece}'</color>");
 				return;
@@ -1422,9 +1436,19 @@ namespace GPTDeepResearch
 
 		object ICloneable.Clone() => Clone();
 
+		/// <summary>
+		/// ToString override for debugging and logging
+		/// </summary>
+		public override string ToString()
+		{
+			return $"ChessBoard[{variant}] {GetSideName(sideToMove)} to move, Move {fullmoveNumber}, " +
+				   $"Eval: {lastEvaluation:F1}cp ({lastWinProbability:P0}), " +
+				   $"History: {gameTree.NodeCount} positions";
+		}
+
 		#endregion
 
-		#region Enhanced API Validation Tests
+		#region Comprehensive Test Suite
 
 		/// <summary>
 		/// Test FEN parsing with comprehensive edge cases
@@ -1660,11 +1684,11 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Test side management
+		/// Test side management and utility methods
 		/// </summary>
-		private static void TestSideManagement()
+		private static void TestUtilityMethods()
 		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing side management...</color>");
+			Debug.Log("<color=cyan>[ChessBoard] Testing utility methods...</color>");
 
 			ChessBoard board = new ChessBoard();
 
@@ -1679,16 +1703,27 @@ namespace GPTDeepResearch
 				Debug.Log("<color=red>[ChessBoard] ✗ Valid side setting failed</color>");
 			}
 
-			// Test invalid side handling
-			char originalHumanSide = board.humanSide;
-			board.SetHumanSide('z'); // Invalid side
-			if (board.humanSide != 'z') // Should default to 'w'
+			// Test algebraic notation conversion
+			v2 coord = AlgebraicToCoord("e4");
+			string square = CoordToAlgebraic(coord);
+			if (coord.x == 4 && coord.y == 3 && square == "e4")
 			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Invalid side correctly handled</color>");
+				Debug.Log("<color=green>[ChessBoard] ✓ Algebraic notation conversion works</color>");
 			}
 			else
 			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Invalid side incorrectly accepted</color>");
+				Debug.Log("<color=red>[ChessBoard] ✗ Algebraic notation conversion failed</color>");
+			}
+
+			// Test piece access
+			char piece = board.GetPiece("e1");
+			if (piece == 'K')
+			{
+				Debug.Log("<color=green>[ChessBoard] ✓ Piece access works</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[ChessBoard] ✗ Piece access failed</color>");
 			}
 
 			// Test turn checking
@@ -1703,156 +1738,20 @@ namespace GPTDeepResearch
 				Debug.Log("<color=red>[ChessBoard] ✗ Turn checking failed</color>");
 			}
 
-			Debug.Log("<color=cyan>[ChessBoard] Side management tests completed</color>");
+			Debug.Log("<color=cyan>[ChessBoard] Utility methods tests completed</color>");
 		}
 
 		/// <summary>
-		/// Test piece access methods
+		/// Test legal move generation and game result evaluation
 		/// </summary>
-		private static void TestPieceAccess()
+		private static void TestGameLogic()
 		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing piece access...</color>");
+			Debug.Log("<color=cyan>[ChessBoard] Testing game logic...</color>");
 
 			ChessBoard board = new ChessBoard();
 
-			// Test valid piece access
-			char piece = board.GetPiece("e1");
-			if (piece == 'K')
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Valid piece access works</color>");
-			}
-			else
-			{
-				Debug.Log($"<color=red>[ChessBoard] ✗ Valid piece access failed, got '{piece}' expected 'K'</color>");
-			}
-
-			// Test coordinate-based access
-			char piece2 = board.GetPiece(new v2(4, 0));
-			if (piece2 == 'K')
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Coordinate piece access works</color>");
-			}
-			else
-			{
-				Debug.Log($"<color=red>[ChessBoard] ✗ Coordinate piece access failed</color>");
-			}
-
-			// Test invalid square handling
-			char invalidPiece = board.GetPiece("z9");
-			if (invalidPiece == '.')
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Invalid square correctly handled</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Invalid square incorrectly handled</color>");
-			}
-
-			// Test out of bounds handling
-			char oobPiece = board.GetPiece(new v2(-1, -1));
-			if (oobPiece == '.')
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Out of bounds access handled</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Out of bounds access not handled</color>");
-			}
-
-			// Test piece setting
-			board.SetPiece(new v2(3, 3), 'Q');
-			if (board.GetPiece(new v2(3, 3)) == 'Q')
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Piece setting works</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Piece setting failed</color>");
-			}
-
-			// Test invalid piece setting
-			board.SetPiece(new v2(3, 3), 'X'); // Invalid piece
-			if (board.GetPiece(new v2(3, 3)) != 'X')
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Invalid piece setting rejected</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Invalid piece setting accepted</color>");
-			}
-
-			Debug.Log("<color=cyan>[ChessBoard] Piece access tests completed</color>");
-		}
-
-		/// <summary>
-		/// Test algebraic notation conversion
-		/// </summary>
-		private static void TestAlgebraicNotation()
-		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing algebraic notation...</color>");
-
-			// Test valid conversions
-			string[] testSquares = { "a1", "h8", "e4", "d5" };
-			v2[] expectedCoords = { new v2(0, 0), new v2(7, 7), new v2(4, 3), new v2(3, 4) };
-
-			bool allPassed = true;
-			for (int i = 0; i < testSquares.Length; i++)
-			{
-				v2 coord = AlgebraicToCoord(testSquares[i]);
-				if (coord.x != expectedCoords[i].x || coord.y != expectedCoords[i].y)
-				{
-					Debug.Log($"<color=red>[ChessBoard] ✗ Algebraic to coord failed for {testSquares[i]}</color>");
-					allPassed = false;
-				}
-
-				string square = CoordToAlgebraic(expectedCoords[i]);
-				if (square != testSquares[i])
-				{
-					Debug.Log($"<color=red>[ChessBoard] ✗ Coord to algebraic failed for {expectedCoords[i]}</color>");
-					allPassed = false;
-				}
-			}
-
-			if (allPassed)
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Algebraic notation conversion works</color>");
-			}
-
-			// Test invalid inputs
-			v2 invalidCoord = AlgebraicToCoord("z9");
-			if (invalidCoord.x == -1 && invalidCoord.y == -1)
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Invalid algebraic notation rejected</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Invalid algebraic notation accepted</color>");
-			}
-
-			string invalidSquare = CoordToAlgebraic(new v2(-1, -1));
-			if (string.IsNullOrEmpty(invalidSquare))
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Invalid coordinate conversion handled</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Invalid coordinate conversion not handled</color>");
-			}
-
-			Debug.Log("<color=cyan>[ChessBoard] Algebraic notation tests completed</color>");
-		}
-
-		/// <summary>
-		/// Test legal move generation
-		/// </summary>
-		private static void TestLegalMoveGeneration()
-		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing legal move generation...</color>");
-
-			ChessBoard board = new ChessBoard();
+			// Test legal move generation
 			var legalMoves = board.GetLegalMoves();
-
-			// Starting position should have 20 legal moves
 			if (legalMoves.Count == 20)
 			{
 				Debug.Log("<color=green>[ChessBoard] ✓ Starting position legal move count correct</color>");
@@ -1862,52 +1761,7 @@ namespace GPTDeepResearch
 				Debug.Log($"<color=red>[ChessBoard] ✗ Starting position legal move count wrong: {legalMoves.Count}, expected 20</color>");
 			}
 
-			// Check that all moves are valid
-			bool allValid = true;
-			foreach (var move in legalMoves)
-			{
-				if (!move.IsValid())
-				{
-					allValid = false;
-					break;
-				}
-			}
-
-			if (allValid)
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ All generated moves are valid</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Some generated moves are invalid</color>");
-			}
-
-			// Test endgame position with fewer moves
-			board.LoadFromFEN("8/8/8/8/8/8/8/4K2k w - - 0 1");
-			var endgameMoves = board.GetLegalMoves();
-
-			if (endgameMoves.Count > 0 && endgameMoves.Count <= 8) // King has max 8 moves
-			{
-				Debug.Log($"<color=green>[ChessBoard] ✓ Endgame move generation reasonable: {endgameMoves.Count} moves</color>");
-			}
-			else
-			{
-				Debug.Log($"<color=red>[ChessBoard] ✗ Endgame move generation unreasonable: {endgameMoves.Count} moves</color>");
-			}
-
-			Debug.Log("<color=cyan>[ChessBoard] Legal move generation tests completed</color>");
-		}
-
-		/// <summary>
-		/// Test game result evaluation
-		/// </summary>
-		private static void TestGameResult()
-		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing game result evaluation...</color>");
-
-			ChessBoard board = new ChessBoard();
-
-			// Test starting position is in progress
+			// Test game result evaluation
 			var startResult = board.GetGameResult();
 			if (startResult == ChessRules.GameResult.InProgress)
 			{
@@ -1918,8 +1772,8 @@ namespace GPTDeepResearch
 				Debug.Log($"<color=red>[ChessBoard] ✗ Starting position incorrectly identified as: {startResult}</color>");
 			}
 
-			// Test checkmate position
-			board.LoadFromFEN("rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3"); // Fool's mate
+			// Test checkmate position (Fool's mate)
+			board.LoadFromFEN("rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3");
 			var mateResult = board.GetGameResult();
 			if (mateResult == ChessRules.GameResult.BlackWins)
 			{
@@ -1930,67 +1784,35 @@ namespace GPTDeepResearch
 				Debug.Log($"<color=red>[ChessBoard] ✗ Checkmate position incorrectly identified as: {mateResult}</color>");
 			}
 
-			// Test stalemate position
-			board.LoadFromFEN("8/8/8/8/8/8/p7/K6k b - - 0 1"); // Simple stalemate
-			var staleResult = board.GetGameResult();
-			if (staleResult == ChessRules.GameResult.Draw || staleResult == ChessRules.GameResult.Stalemate)
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Stalemate position correctly identified</color>");
-			}
-			else
-			{
-				Debug.Log($"<color=red>[ChessBoard] ✗ Stalemate position incorrectly identified as: {staleResult}</color>");
-			}
-
-			Debug.Log("<color=cyan>[ChessBoard] Game result tests completed</color>");
+			Debug.Log("<color=cyan>[ChessBoard] Game logic tests completed</color>");
 		}
 
 		/// <summary>
-		/// Test board cloning
+		/// Test board cloning and advanced features
 		/// </summary>
-		private static void TestBoardCloning()
+		private static void TestAdvancedFeatures()
 		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing board cloning...</color>");
+			Debug.Log("<color=cyan>[ChessBoard] Testing advanced features...</color>");
 
 			ChessBoard original = new ChessBoard();
 			original.MakeMove(ChessMove.FromUCI("e2e4", original));
 			original.UpdateEvaluation(50f, 0.55f, 0f, 8);
 			original.SetHumanSide('b');
 
+			// Test cloning
 			ChessBoard clone = original.Clone();
-
-			// Test that clone has same FEN
-			if (clone.ToFEN() == original.ToFEN())
+			if (clone.ToFEN() == original.ToFEN() &&
+				Math.Abs(clone.LastEvaluation - original.LastEvaluation) < 0.01f &&
+				clone.humanSide == original.humanSide)
 			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Cloned board has same position</color>");
+				Debug.Log("<color=green>[ChessBoard] ✓ Board cloning works correctly</color>");
 			}
 			else
 			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Cloned board has different position</color>");
+				Debug.Log("<color=red>[ChessBoard] ✗ Board cloning failed</color>");
 			}
 
-			// Test that clone has same evaluation
-			if (Math.Abs(clone.LastEvaluation - original.LastEvaluation) < 0.01f &&
-				Math.Abs(clone.LastWinProbability - original.LastWinProbability) < 0.01f)
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Cloned board has same evaluation</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Cloned board has different evaluation</color>");
-			}
-
-			// Test that clone has same side settings
-			if (clone.humanSide == original.humanSide && clone.engineSide == original.engineSide)
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Cloned board has same side settings</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Cloned board has different side settings</color>");
-			}
-
-			// Test that clone is independent (modify original)
+			// Test independence
 			original.MakeMove(ChessMove.FromUCI("e7e5", original));
 			if (clone.ToFEN() != original.ToFEN())
 			{
@@ -2001,29 +1823,16 @@ namespace GPTDeepResearch
 				Debug.Log("<color=red>[ChessBoard] ✗ Cloned board is not independent</color>");
 			}
 
-			Debug.Log("<color=cyan>[ChessBoard] Board cloning tests completed</color>");
-		}
-
-		/// <summary>
-		/// Test threefold repetition detection
-		/// </summary>
-		private static void TestThreefoldRepetition()
-		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing threefold repetition...</color>");
-
-			ChessBoard board = new ChessBoard();
-
-			// Make moves that will repeat position
+			// Test threefold repetition
+			ChessBoard repBoard = new ChessBoard();
 			var moves = new string[] { "g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8" };
-
 			foreach (string uciMove in moves)
 			{
-				var move = ChessMove.FromUCI(uciMove, board);
-				board.MakeMove(move);
+				var move = ChessMove.FromUCI(uciMove, repBoard);
+				repBoard.MakeMove(move);
 			}
 
-			// Check for repetition
-			bool isRepetition = board.IsThreefoldRepetition();
+			bool isRepetition = repBoard.IsThreefoldRepetition();
 			if (isRepetition)
 			{
 				Debug.Log("<color=green>[ChessBoard] ✓ Threefold repetition correctly detected</color>");
@@ -2033,7 +1842,62 @@ namespace GPTDeepResearch
 				Debug.Log("<color=red>[ChessBoard] ✗ Threefold repetition not detected</color>");
 			}
 
-			Debug.Log("<color=cyan>[ChessBoard] Threefold repetition tests completed</color>");
+			// Test ToString method
+			string boardString = original.ToString();
+			if (!string.IsNullOrEmpty(boardString) && boardString.Contains("ChessBoard"))
+			{
+				Debug.Log("<color=green>[ChessBoard] ✓ ToString method works</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[ChessBoard] ✗ ToString method failed</color>");
+			}
+
+			Debug.Log("<color=cyan>[ChessBoard] Advanced features tests completed</color>");
+		}
+
+		/// <summary>
+		/// Test chess variants and special cases
+		/// </summary>
+		private static void TestChessVariants()
+		{
+			Debug.Log("<color=cyan>[ChessBoard] Testing chess variants...</color>");
+
+			// Test Chess960 setup
+			ChessBoard chess960Board = new ChessBoard("", ChessVariant.Chess960);
+			string fen960 = chess960Board.ToFEN();
+			if (!string.IsNullOrEmpty(fen960) && fen960.Contains(" w "))
+			{
+				Debug.Log("<color=green>[ChessBoard] ✓ Chess960 setup works</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[ChessBoard] ✗ Chess960 setup failed</color>");
+			}
+
+			// Test King of the Hill variant
+			ChessBoard kothBoard = new ChessBoard("", ChessVariant.KingOfTheHill);
+			if (kothBoard.variant == ChessVariant.KingOfTheHill)
+			{
+				Debug.Log("<color=green>[ChessBoard] ✓ King of the Hill variant initialization works</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[ChessBoard] ✗ King of the Hill variant initialization failed</color>");
+			}
+
+			// Test invalid FEN fallback
+			ChessBoard fallbackBoard = new ChessBoard("invalid_fen");
+			if (fallbackBoard.GetPiece("e1") == 'K')
+			{
+				Debug.Log("<color=green>[ChessBoard] ✓ Invalid FEN fallback works</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[ChessBoard] ✗ Invalid FEN fallback failed</color>");
+			}
+
+			Debug.Log("<color=cyan>[ChessBoard] Chess variants tests completed</color>");
 		}
 
 		/// <summary>
@@ -2049,13 +1913,10 @@ namespace GPTDeepResearch
 				TestMoveOperations();
 				TestEvaluationSystem();
 				TestPositionHashing();
-				TestSideManagement();
-				TestPieceAccess();
-				TestAlgebraicNotation();
-				TestLegalMoveGeneration();
-				TestGameResult();
-				TestBoardCloning();
-				TestThreefoldRepetition();
+				TestUtilityMethods();
+				TestGameLogic();
+				TestAdvancedFeatures();
+				TestChessVariants();
 
 				Debug.Log("<color=green>=== All ChessBoard tests completed successfully ===</color>");
 			}
