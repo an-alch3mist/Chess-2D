@@ -474,7 +474,7 @@ namespace GptDeepResearch
 
 			string[] validFENs = {
 				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-				"rnbqkb1r/pppp1ppp/5n2/4p3/2B1P3/8/PPPP1PPP/RNBQK1NR w KQkq - 4 4",
+				"rnbqkb1r/pppp1ppp/5n2/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
 				"8/8/8/8/8/8/8/8 w - - 0 1"
 			};
 
