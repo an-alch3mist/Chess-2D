@@ -1,329 +1,294 @@
 # Source: `ChessBoard.cs` — Enhanced chess board with comprehensive engine integration, validation, and testing
 
-Enhanced chess board implementation supporting legal move generation, promotion handling, undo/redo functionality, position caching, game tree navigation, and comprehensive evaluation metrics for chess engine integration.
+A comprehensive chess board implementation supporting legal move generation, promotion handling, undo/redo operations, evaluation metrics, position caching, game tree management with variations, and multiple chess variants.
 
 ## Short description (2–4 sentences)
 
-This file implements a comprehensive chess board system with advanced features for chess engine integration. It handles board state management, move validation, game tree navigation with branching variations, position caching using Zobrist hashing, and extensive evaluation metrics. The system supports multiple chess variants, PGN notation, threefold repetition detection, and includes comprehensive API validation testing.
+This file implements a feature-rich chess board system designed for chess engine integration and game analysis. It provides complete game state management with FEN parsing/generation, legal move validation, position hashing using Zobrist keys, threefold repetition detection, and comprehensive move history with branching variations support. The system includes position caching for performance optimization and supports multiple chess variants including Chess960, King of the Hill, and Racing Kings.
 
 ## Metadata
 
 * **Filename:** `ChessBoard.cs`
 * **Primary namespace:** `GPTDeepResearch`
-* **Dependent namespace:** `using SPACE_UTIL;` (external namespace), `using System;`, `using System.Collections.Generic;`, `using System.Linq;`, `using System.Text;`, `using UnityEngine;`
-* **Estimated lines:** 2500
-* **Estimated chars:** 95000
+* **Dependent namespace:** `SPACE_UTIL` (v2 coordinate system, Board<T> generic board), `System`, `System.Collections.Generic`, `System.Linq`, `System.Text`, `UnityEngine`
+* **Estimated lines:** 1450
+* **Estimated chars:** 52000
 * **Public types:** `ChessBoard (class)`, `ChessBoard.ChessVariant (enum)`, `ChessBoard.PositionInfo (struct)`, `ChessBoard.PGNMetadata (class)`, `ChessBoard.GameTree (class)`, `ChessBoard.GameNode (class)`, `ChessBoard.BoardState (struct)`
 * **Unity version / Target framework:** Unity 2020.3 / .NET Standard 2.0
-* **Dependencies:** `SPACE_UTIL.v2` (SPACE_UTIL is external namespace), `SPACE_UTIL.Board<T>` (SPACE_UTIL is external namespace), `ChessRules`, `MoveGenerator`, `ChessMove`
+* **Dependencies:** `SPACE_UTIL.v2` (SPACE_UTIL is namespace), `SPACE_UTIL.Board<T>` (SPACE_UTIL is namespace), `ChessRules.cs`, `MoveGenerator.cs`, `ChessMove.cs`
 
 ## Public API summary (table)
 
 | **Type** | **Member** | **Signature** | **Short purpose** | **OneLiner Call** |
-|----------|------------|---------------|------------------|-------------------|
-| Board<char> | board | public Board<char> board | Chess board representation | var piece = chessBoard.board.GT(new v2(x, y)); |
-| char | sideToMove | public char sideToMove | Current side to move ('w' or 'b') | char side = chessBoard.sideToMove; |
-| string | castlingRights | public string castlingRights | Castling availability | string rights = chessBoard.castlingRights; |
-| string | enPassantSquare | public string enPassantSquare | En passant target square | string epSquare = chessBoard.enPassantSquare; |
-| int | halfmoveClock | public int halfmoveClock | Halfmove clock for 50-move rule | int clock = chessBoard.halfmoveClock; |
-| int | fullmoveNumber | public int fullmoveNumber | Full move number | int moveNum = chessBoard.fullmoveNumber; |
-| char | humanSide | public char humanSide | Human player side | char side = chessBoard.humanSide; |
-| char | engineSide | public char engineSide | Engine player side | char side = chessBoard.engineSide; |
-| bool | allowSideSwitching | public bool allowSideSwitching | Allow switching sides | bool canSwitch = chessBoard.allowSideSwitching; |
-| ChessBoard.ChessVariant (enum) | variant | public ChessBoard.ChessVariant variant | Chess variant type | var variant = chessBoard.variant; |
-| float | LastEvaluation | public float LastEvaluation { get; } | Last position evaluation | float eval = chessBoard.LastEvaluation; |
-| float | LastWinProbability | public float LastWinProbability { get; } | Last win probability | float winProb = chessBoard.LastWinProbability; |
-| float | LastMateDistance | public float LastMateDistance { get; } | Last mate distance | float mateDist = chessBoard.LastMateDistance; |
-| int | LastEvaluationDepth | public int LastEvaluationDepth { get; } | Last evaluation depth | int depth = chessBoard.LastEvaluationDepth; |
-| int | GameTreeNodeCount | public int GameTreeNodeCount { get; } | Game tree node count | int nodes = chessBoard.GameTreeNodeCount; |
-| int | CurrentHistoryIndex | public int CurrentHistoryIndex { get; } | Current history index | int index = chessBoard.CurrentHistoryIndex; |
-| void | ChessBoard() | public ChessBoard() | Default constructor | var board = new ChessBoard(); |
-| void | ChessBoard(string, ChessBoard.ChessVariant) | public ChessBoard(string fen, ChessBoard.ChessVariant variant = ChessBoard.ChessVariant.Standard) | Constructor with FEN | var board = new ChessBoard("fen", ChessBoard.ChessVariant.Standard); |
-| void | SetupStartingPosition() | public void SetupStartingPosition() | Setup starting position | chessBoard.SetupStartingPosition(); |
-| ulong | CalculatePositionHash() | public ulong CalculatePositionHash() | Calculate Zobrist hash | ulong hash = chessBoard.CalculatePositionHash(); |
-| void | SaveCurrentState() | public void SaveCurrentState() | Save current state to game tree | chessBoard.SaveCurrentState(); |
-| bool | MakeMove(ChessMove, string) | public bool MakeMove(ChessMove move, string comment = "") | Make and validate move | bool success = chessBoard.MakeMove(move, "comment"); |
-| bool | UndoMove() | public bool UndoMove() | Undo last move | bool success = chessBoard.UndoMove(); |
-| bool | RedoMove() | public bool RedoMove() | Redo next move | bool success = chessBoard.RedoMove(); |
-| bool | GoToVariation(int) | public bool GoToVariation(int variationIndex) | Navigate to variation | bool success = chessBoard.GoToVariation(0); |
-| bool | CanUndo() | public bool CanUndo() | Check if can undo | bool canUndo = chessBoard.CanUndo(); |
-| bool | CanRedo() | public bool CanRedo() | Check if can redo | bool canRedo = chessBoard.CanRedo(); |
-| ChessBoard.PositionInfo? | GetCachedPositionInfo() | public ChessBoard.PositionInfo? GetCachedPositionInfo() | Get cached position info | var info = chessBoard.GetCachedPositionInfo(); |
-| bool | IsThreefoldRepetition() | public bool IsThreefoldRepetition() | Check threefold repetition | bool isRep = chessBoard.IsThreefoldRepetition(); |
-| bool | LoadFromFEN(string) | public bool LoadFromFEN(string fen) | Load position from FEN | bool success = chessBoard.LoadFromFEN("fen"); |
-| string | ToFEN() | public string ToFEN() | Convert to FEN string | string fen = chessBoard.ToFEN(); |
-| void | SetHumanSide(char) | public void SetHumanSide(char side) | Set human player side | chessBoard.SetHumanSide('w'); |
-| string | GetSideName(char) | public string GetSideName(char side) | Get human-readable side name | string name = chessBoard.GetSideName('w'); |
-| bool | IsHumanTurn() | public bool IsHumanTurn() | Check if human's turn | bool isHuman = chessBoard.IsHumanTurn(); |
-| bool | IsEngineTurn() | public bool IsEngineTurn() | Check if engine's turn | bool isEngine = chessBoard.IsEngineTurn(); |
-| char | GetPiece(string) | public char GetPiece(string square) | Get piece at algebraic square | char piece = chessBoard.GetPiece("e4"); |
-| char | GetPiece(v2) | public char GetPiece(v2 coord) | Get piece at coordinate | char piece = chessBoard.GetPiece(new v2(4, 3)); |
-| void | SetPiece(v2, char) | public void SetPiece(v2 coord, char piece) | Set piece at coordinate | chessBoard.SetPiece(new v2(4, 3), 'Q'); |
-| v2 | AlgebraicToCoord(string) | public static v2 AlgebraicToCoord(string square) | Convert algebraic to coordinate | v2 coord = ChessBoard.AlgebraicToCoord("e4"); |
-| string | CoordToAlgebraic(v2) | public static string CoordToAlgebraic(v2 coord) | Convert coordinate to algebraic | string square = ChessBoard.CoordToAlgebraic(new v2(4, 3)); |
-| List<ChessMove> | GetLegalMoves() | public List<ChessMove> GetLegalMoves() | Get all legal moves | var moves = chessBoard.GetLegalMoves(); |
-| void | UpdateEvaluation(float, float, float, int) | public void UpdateEvaluation(float centipawnScore, float winProbability, float mateDistance = 0f, int searchDepth = 0) | Update evaluation data | chessBoard.UpdateEvaluation(150f, 0.65f, 0f, 12); |
-| void | ResetEvaluation() | public void ResetEvaluation() | Reset evaluation to neutral | chessBoard.ResetEvaluation(); |
-| ChessRules.GameResult | GetGameResult() | public ChessRules.GameResult GetGameResult() | Get current game result | var result = chessBoard.GetGameResult(); |
-| ChessBoard | Clone() | public ChessBoard Clone() | Create deep copy | var clone = chessBoard.Clone(); |
-| void | RunAllTests() | public static void RunAllTests() | Run comprehensive test suite | ChessBoard.RunAllTests(); |
+|----------|------------|---------------|-------------------|-------------------|
+| Board<char> | board | public Board<char> board | 8x8 chess board state | var piece = chessBoard.board.GT(coord) |
+| char | sideToMove | public char sideToMove | Current side to move (w/b) | var side = chessBoard.sideToMove |
+| string | castlingRights | public string castlingRights | Castling availability string | var rights = chessBoard.castlingRights |
+| string | enPassantSquare | public string enPassantSquare | En passant target square | var ep = chessBoard.enPassantSquare |
+| int | halfmoveClock | public int halfmoveClock | 50-move rule counter | var half = chessBoard.halfmoveClock |
+| int | fullmoveNumber | public int fullmoveNumber | Full move number | var move = chessBoard.fullmoveNumber |
+| char | humanSide | public char humanSide { get; private set; } | Human player side | var human = chessBoard.humanSide |
+| char | engineSide | public char engineSide { get; private set; } | Engine player side | var engine = chessBoard.engineSide |
+| bool | allowSideSwitching | public bool allowSideSwitching | Allow changing sides | var allow = chessBoard.allowSideSwitching |
+| ChessBoard.ChessVariant (enum) | variant | public ChessBoard.ChessVariant variant { get; private set; } | Chess variant type | var var = chessBoard.variant |
+| float | LastEvaluation | public float LastEvaluation { get; private set; } | Last position evaluation | var eval = chessBoard.LastEvaluation |
+| float | LastWinProbability | public float LastWinProbability { get; private set; } | Last win probability | var prob = chessBoard.LastWinProbability |
+| float | LastMateDistance | public float LastMateDistance { get; private set; } | Distance to mate | var mate = chessBoard.LastMateDistance |
+| int | LastEvaluationDepth | public int LastEvaluationDepth { get; private set; } | Evaluation search depth | var depth = chessBoard.LastEvaluationDepth |
+| int | GameTreeNodeCount | public int GameTreeNodeCount { get; } | Game tree node count | var count = chessBoard.GameTreeNodeCount |
+| int | CurrentHistoryIndex | public int CurrentHistoryIndex { get; } | Current history position | var index = chessBoard.CurrentHistoryIndex |
+| void | constructor | public ChessBoard() | Default constructor with starting position | var board = new ChessBoard() |
+| void | constructor | public ChessBoard(string fen, ChessBoard.ChessVariant variant = ChessBoard.ChessVariant.Standard) | Constructor with FEN and variant | var board = new ChessBoard("fen", ChessBoard.ChessVariant.Standard) |
+| void | SetupStartingPosition | public void SetupStartingPosition() | Setup starting position for variant | chessBoard.SetupStartingPosition() |
+| bool | LoadFromFEN | public bool LoadFromFEN(string fen) | Load position from FEN string | bool success = chessBoard.LoadFromFEN("fen") |
+| string | ToFEN | public string ToFEN() | Generate FEN string from position | string fen = chessBoard.ToFEN() |
+| void | SetHumanSide | public void SetHumanSide(char side) | Set human player side | chessBoard.SetHumanSide('w') |
+| string | GetSideName | public string GetSideName(char side) | Get readable side name | string name = chessBoard.GetSideName('w') |
+| bool | IsHumanTurn | public bool IsHumanTurn() | Check if human's turn | bool turn = chessBoard.IsHumanTurn() |
+| bool | IsEngineTurn | public bool IsEngineTurn() | Check if engine's turn | bool turn = chessBoard.IsEngineTurn() |
+| char | GetPiece | public char GetPiece(string square) | Get piece at algebraic square | char piece = chessBoard.GetPiece("e4") |
+| char | GetPiece | public char GetPiece(v2 coord) | Get piece at coordinate | char piece = chessBoard.GetPiece(coord) |
+| void | SetPiece | public void SetPiece(v2 coord, char piece) | Set piece at coordinate | chessBoard.SetPiece(coord, 'Q') |
+| v2 | AlgebraicToCoord | public static v2 AlgebraicToCoord(string square) | Convert algebraic to coordinate | v2 coord = ChessBoard.AlgebraicToCoord("e4") |
+| string | CoordToAlgebraic | public static string CoordToAlgebraic(v2 coord) | Convert coordinate to algebraic | string square = ChessBoard.CoordToAlgebraic(coord) |
+| List<ChessMove> | GetLegalMoves | public List<ChessMove> GetLegalMoves() | Get all legal moves | var moves = chessBoard.GetLegalMoves() |
+| bool | MakeMove | public bool MakeMove(ChessMove move, string comment = "") | Make move with validation | bool success = chessBoard.MakeMove(move) |
+| bool | UndoMove | public bool UndoMove() | Undo last move | bool success = chessBoard.UndoMove() |
+| bool | RedoMove | public bool RedoMove() | Redo next move | bool success = chessBoard.RedoMove() |
+| bool | GoToVariation | public bool GoToVariation(int variationIndex) | Navigate to variation | bool success = chessBoard.GoToVariation(0) |
+| bool | CanUndo | public bool CanUndo() | Check if can undo | bool can = chessBoard.CanUndo() |
+| bool | CanRedo | public bool CanRedo() | Check if can redo | bool can = chessBoard.CanRedo() |
+| void | UpdateEvaluation | public void UpdateEvaluation(float centipawnScore, float winProbability, float mateDistance = 0f, int searchDepth = 0) | Update position evaluation | chessBoard.UpdateEvaluation(150f, 0.65f) |
+| void | ResetEvaluation | public void ResetEvaluation() | Reset evaluation to neutral | chessBoard.ResetEvaluation() |
+| ChessRules.GameResult | GetGameResult | public ChessRules.GameResult GetGameResult() | Get current game result | var result = chessBoard.GetGameResult() |
+| ulong | CalculatePositionHash | public ulong CalculatePositionHash() | Calculate Zobrist position hash | ulong hash = chessBoard.CalculatePositionHash() |
+| ChessBoard.PositionInfo? | GetCachedPositionInfo | public ChessBoard.PositionInfo? GetCachedPositionInfo() | Get cached position data | var info = chessBoard.GetCachedPositionInfo() |
+| bool | IsThreefoldRepetition | public bool IsThreefoldRepetition() | Check threefold repetition | bool rep = chessBoard.IsThreefoldRepetition() |
+| ChessBoard | Clone | public ChessBoard Clone() | Create deep copy | ChessBoard clone = chessBoard.Clone() |
+| void | RunAllTests | public static void RunAllTests() | Run comprehensive test suite | ChessBoard.RunAllTests() |
 
 ## Important types — details
 
 ### `ChessBoard` (class)
 * **Kind:** class implementing ICloneable
-* **Responsibility:** Main chess board implementation with engine integration, move validation, game tree management, and comprehensive testing
+* **Responsibility:** Main chess board with engine integration, move validation, history management, and position analysis
 * **Constructor(s):** 
-  - `public ChessBoard()` — Creates board with starting position
-  - `public ChessBoard(string fen, ChessBoard.ChessVariant variant = ChessBoard.ChessVariant.Standard)` — Creates board from FEN string
-* **Public properties / fields:**
-  - `board` — Board<char> — 8x8 chess board representation (get/set)
-  - `sideToMove` — char — Current side to move ('w' or 'b') (get/set)
-  - `castlingRights` — string — Castling availability (KQkq format) (get/set)
-  - `enPassantSquare` — string — En passant target square (get/set)
-  - `halfmoveClock` — int — Halfmove clock for 50-move rule (get/set)
-  - `fullmoveNumber` — int — Full move number (get/set)
-  - `humanSide` — char — Human player side (get/set)
-  - `engineSide` — char — Engine player side (get/set)
-  - `allowSideSwitching` — bool — Allow switching sides during game (get/set)
-  - `variant` — ChessBoard.ChessVariant — Chess variant type (get/set)
-  - `LastEvaluation` — float — Last position evaluation in centipawns (get)
-  - `LastWinProbability` — float — Last win probability (0.0-1.0) (get)
-  - `LastMateDistance` — float — Last mate distance (get)
-  - `LastEvaluationDepth` — int — Last evaluation search depth (get)
-  - `GameTreeNodeCount` — int — Number of nodes in game tree (get)
-  - `CurrentHistoryIndex` — int — Current position index in game tree (get)
+  * `public ChessBoard()` — Creates board with starting position
+  * `public ChessBoard(string fen, ChessBoard.ChessVariant variant = ChessBoard.ChessVariant.Standard)` — Creates board from FEN with variant
+* **Public properties / fields:** 
+  * `board` — `Board<char>` — 8x8 board representation (get/set)
+  * `sideToMove` — `char` — Current player ('w'/'b') (get/set)
+  * `castlingRights` — `string` — Castling availability (get/set)
+  * `enPassantSquare` — `string` — En passant target (get/set)
+  * `halfmoveClock` — `int` — 50-move rule counter (get/set)
+  * `fullmoveNumber` — `int` — Full move number (get/set)
+  * `humanSide` — `char` — Human player side (get)
+  * `engineSide` — `char` — Engine player side (get)
+  * `allowSideSwitching` — `bool` — Allow side changes (get/set)
+  * `variant` — `ChessBoard.ChessVariant` — Chess variant type (get)
+  * `LastEvaluation` — `float` — Last position evaluation (get)
+  * `LastWinProbability` — `float` — Last win probability (get)
+  * `LastMateDistance` — `float` — Distance to mate (get)
+  * `LastEvaluationDepth` — `int` — Evaluation search depth (get)
+  * `GameTreeNodeCount` — `int` — Game tree node count (get)
+  * `CurrentHistoryIndex` — `int` — Current history position (get)
 
 * **Public methods:**
-  - **Signature:** `public void SetupStartingPosition()`
-    **Description:** Initialize board to starting position based on variant
-    **Parameters:** none
-    **Returns:** void — ChessBoard.SetupStartingPosition()
-    **Side effects:** Resets board state, clears evaluation
-    
-  - **Signature:** `public ulong CalculatePositionHash()`
-    **Description:** Calculate Zobrist hash for current position
-    **Parameters:** none
-    **Returns:** ulong hash = ChessBoard.CalculatePositionHash()
-    **Complexity:** O(64) — iterates through all squares
-    
-  - **Signature:** `public bool MakeMove(ChessMove move, string comment = "")`
-    **Description:** Validate and execute chess move with game tree update
-    **Parameters:** 
-      - move : ChessMove — Move to execute
-      - comment : string — Optional move comment
-    **Returns:** bool success = ChessBoard.MakeMove(move, "comment")
-    **Side effects:** Updates board state, game tree, position cache
-    **Throws:** Logs validation errors to Debug
-    
-  - **Signature:** `public bool UndoMove()`
-    **Description:** Navigate to previous position in game tree
-    **Parameters:** none
-    **Returns:** bool success = ChessBoard.UndoMove()
-    **Side effects:** Restores previous board state
-    
-  - **Signature:** `public bool RedoMove()`
-    **Description:** Navigate forward in main line
-    **Parameters:** none
-    **Returns:** bool success = ChessBoard.RedoMove()
-    **Side effects:** Advances to next position
-    
-  - **Signature:** `public bool LoadFromFEN(string fen)`
-    **Description:** Load board position from FEN notation with validation
-    **Parameters:** fen : string — FEN string to parse
-    **Returns:** bool success = ChessBoard.LoadFromFEN("fen")
-    **Throws:** Logs parsing errors to Debug
-    **Side effects:** Replaces current board state
-    
-  - **Signature:** `public string ToFEN()`
-    **Description:** Convert current position to FEN notation
-    **Parameters:** none
-    **Returns:** string fen = ChessBoard.ToFEN()
-    
-  - **Signature:** `public void SetHumanSide(char side)`
-    **Description:** Set human player side with validation
-    **Parameters:** side : char — Player side ('w', 'b', or 'x')
-    **Returns:** void — ChessBoard.SetHumanSide('w')
-    **Side effects:** Updates humanSide and engineSide properties
-    
-  - **Signature:** `public char GetPiece(string square)`
-    **Description:** Get piece at algebraic coordinate with bounds checking
-    **Parameters:** square : string — Algebraic notation (e.g., "e4")
-    **Returns:** char piece = ChessBoard.GetPiece("e4")
-    
-  - **Signature:** `public char GetPiece(v2 coord)`
-    **Description:** Get piece at coordinate with bounds checking
-    **Parameters:** coord : v2 — Board coordinate
-    **Returns:** char piece = ChessBoard.GetPiece(new v2(4, 3))
-    
-  - **Signature:** `public void SetPiece(v2 coord, char piece)`
-    **Description:** Set piece at coordinate with validation
-    **Parameters:** 
-      - coord : v2 — Board coordinate
-      - piece : char — Piece character or '.' for empty
-    **Returns:** void — ChessBoard.SetPiece(new v2(4, 3), 'Q')
-    **Side effects:** Modifies board state
-    
-  - **Signature:** `public static v2 AlgebraicToCoord(string square)`
-    **Description:** Convert algebraic notation to board coordinate
-    **Parameters:** square : string — Algebraic notation
-    **Returns:** v2 coord = ChessBoard.AlgebraicToCoord("e4")
-    
-  - **Signature:** `public static string CoordToAlgebraic(v2 coord)`
-    **Description:** Convert board coordinate to algebraic notation
-    **Parameters:** coord : v2 — Board coordinate
-    **Returns:** string square = ChessBoard.CoordToAlgebraic(new v2(4, 3))
-    
-  - **Signature:** `public List<ChessMove> GetLegalMoves()`
-    **Description:** Generate all legal moves for current position
-    **Parameters:** none
-    **Returns:** List<ChessMove> moves = ChessBoard.GetLegalMoves()
-    **Complexity:** O(n²) — depends on position complexity
-    
-  - **Signature:** `public void UpdateEvaluation(float centipawnScore, float winProbability, float mateDistance = 0f, int searchDepth = 0)`
-    **Description:** Update position evaluation metrics with validation
-    **Parameters:** 
-      - centipawnScore : float — Evaluation in centipawns
-      - winProbability : float — Win probability (0.0-1.0)
-      - mateDistance : float — Distance to mate
-      - searchDepth : int — Search depth used
-    **Returns:** void — ChessBoard.UpdateEvaluation(150f, 0.65f, 0f, 12)
-    **Side effects:** Updates evaluation cache, logs to Debug
-    
-  - **Signature:** `public ChessRules.GameResult GetGameResult()`
-    **Description:** Evaluate current position for game termination
-    **Parameters:** none
-    **Returns:** ChessRules.GameResult result = ChessBoard.GetGameResult()
-    
-  - **Signature:** `public ChessBoard Clone()`
-    **Description:** Create deep copy of board including all state
-    **Parameters:** none
-    **Returns:** ChessBoard clone = ChessBoard.Clone()
-    **Complexity:** O(n) — copies all board data
-    
-  - **Signature:** `public static void RunAllTests()`
-    **Description:** Execute comprehensive API validation test suite
-    **Parameters:** none
-    **Returns:** void — ChessBoard.RunAllTests()
-    **Side effects:** Logs test results to Debug console
+  * **Signature:** `public void SetupStartingPosition()`
+    * **Description:** Sets up starting position based on current variant
+    * **Parameters:** None
+    * **Returns:** `void` — `ChessBoard.SetupStartingPosition()`
+    * **Side effects / state changes:** Resets board to starting position, clears history
+    * **Notes:** Handles different variants like Chess960, King of the Hill
+
+  * **Signature:** `public bool LoadFromFEN(string fen)`
+    * **Description:** Loads position from FEN notation with validation
+    * **Parameters:** 
+      * `fen` : `string` — FEN notation string
+    * **Returns:** `bool success = ChessBoard.LoadFromFEN("fen")` — true if successful
+    * **Throws:** Returns false for invalid FEN instead of throwing
+    * **Side effects / state changes:** Updates all board state fields, validates piece counts
+    * **Complexity / performance:** O(64) for board parsing plus validation
+
+  * **Signature:** `public string ToFEN()`
+    * **Description:** Generates FEN notation string from current position
+    * **Parameters:** None
+    * **Returns:** `string fen = ChessBoard.ToFEN()` — FEN notation string
+    * **Side effects / state changes:** None - pure function
+    * **Complexity / performance:** O(64) for board serialization
+
+  * **Signature:** `public bool MakeMove(ChessMove move, string comment = "")`
+    * **Description:** Makes move with legal validation and history storage
+    * **Parameters:** 
+      * `move` : `ChessMove` — Move to make
+      * `comment` : `string` — Optional move comment
+    * **Returns:** `bool success = ChessBoard.MakeMove(move)` — true if move was legal and made
+    * **Side effects / state changes:** Updates position, switches sides, saves to game tree
+    * **Complexity / performance:** O(1) move application plus legal move validation
+    * **Notes:** Validates move legality before applying, generates PGN notation
+
+  * **Signature:** `public bool UndoMove()`
+    * **Description:** Reverts to previous position in game tree
+    * **Parameters:** None
+    * **Returns:** `bool success = ChessBoard.UndoMove()` — true if undo was possible
+    * **Side effects / state changes:** Restores previous board state and evaluation
+    * **Notes:** Uses game tree navigation, preserves variations
+
+  * **Signature:** `public bool RedoMove()`
+    * **Description:** Advances to next position in current variation
+    * **Parameters:** None
+    * **Returns:** `bool success = ChessBoard.RedoMove()` — true if redo was possible
+    * **Side effects / state changes:** Advances to next position, updates state
+    * **Notes:** Follows main line (first child) when multiple variations exist
+
+  * **Signature:** `public List<ChessMove> GetLegalMoves()`
+    * **Description:** Generates all legal moves for current position
+    * **Parameters:** None
+    * **Returns:** `List<ChessMove> moves = ChessBoard.GetLegalMoves()` — list of legal moves
+    * **Complexity / performance:** O(n) where n is number of pieces, with legal validation
+    * **Notes:** Uses MoveGenerator for generation, includes special moves
+
+  * **Signature:** `public void UpdateEvaluation(float centipawnScore, float winProbability, float mateDistance = 0f, int searchDepth = 0)`
+    * **Description:** Updates position evaluation metrics from engine
+    * **Parameters:** 
+      * `centipawnScore` : `float` — Evaluation in centipawns
+      * `winProbability` : `float` — Win probability (0.0-1.0)
+      * `mateDistance` : `float` — Moves to mate (0 if not mate)
+      * `searchDepth` : `int` — Search depth used
+    * **Returns:** `void` — `ChessBoard.UpdateEvaluation(150f, 0.65f)`
+    * **Side effects / state changes:** Updates cached evaluation, triggers position caching
+    * **Notes:** Clamps win probability to [0,1] range
+
+  * **Signature:** `public ChessRules.GameResult GetGameResult()`
+    * **Description:** Evaluates current position for game termination
+    * **Parameters:** None
+    * **Returns:** `ChessRules.GameResult result = ChessBoard.GetGameResult()` — game result enum
+    * **Side effects / state changes:** None - analysis only
+    * **Notes:** Includes variant-specific win conditions (King of the Hill, etc)
+
+  * **Signature:** `public ulong CalculatePositionHash()`
+    * **Description:** Calculates Zobrist hash for current position
+    * **Parameters:** None
+    * **Returns:** `ulong hash = ChessBoard.CalculatePositionHash()` — 64-bit position hash
+    * **Complexity / performance:** O(64) for board scan plus hash calculation
+    * **Notes:** Used for position caching and repetition detection
+
+  * **Signature:** `public ChessBoard Clone()`
+    * **Description:** Creates independent deep copy of board
+    * **Parameters:** None
+    * **Returns:** `ChessBoard clone = ChessBoard.Clone()` — independent copy
+    * **Side effects / state changes:** None - creates new instance
+    * **Complexity / performance:** O(1) for state copy, history not cloned
+
+  * **Signature:** `public static void RunAllTests()`
+    * **Description:** Executes comprehensive test suite for validation
+    * **Parameters:** None
+    * **Returns:** `void` — `ChessBoard.RunAllTests()`
+    * **Side effects / state changes:** Logs test results to Unity console with color coding
+    * **Notes:** Tests FEN parsing, move operations, evaluation system, advanced features
 
 ### `ChessBoard.ChessVariant` (enum)
-* **Kind:** enum
-* **Responsibility:** Define supported chess variants
-* **Values:** Standard, Chess960, KingOfTheHill, Atomic, ThreeCheck, Horde, RacingKings
+* **Kind:** enum nested in ChessBoard
+* **Responsibility:** Defines supported chess variants
+* **Values:** `Standard`, `Chess960`, `KingOfTheHill`, `Atomic`, `ThreeCheck`, `Horde`, `RacingKings`
 
 ### `ChessBoard.PositionInfo` (struct)
-* **Kind:** struct
-* **Responsibility:** Cached position information for performance optimization
+* **Kind:** struct for position caching
+* **Responsibility:** Caches position evaluation and analysis data
 * **Constructor(s):** `public PositionInfo(ulong hash, float eval, float winProb, int depth)`
 * **Public properties / fields:**
-  - `hash` — ulong — Position Zobrist hash (get/set)
-  - `evaluation` — float — Cached evaluation score (get/set)
-  - `winProbability` — float — Cached win probability (get/set)
-  - `depthSearched` — int — Search depth used (get/set)
-  - `timestamp` — float — Cache timestamp (get/set)
-  - `legalMoves` — List<ChessMove> — Cached legal moves (get/set)
-  - `gameResult` — ChessRules.GameResult — Cached game result (get/set)
+  * `hash` — `ulong` — Position hash (get/set)
+  * `evaluation` — `float` — Cached evaluation (get/set)
+  * `winProbability` — `float` — Cached win probability (get/set)
+  * `depthSearched` — `int` — Search depth used (get/set)
+  * `timestamp` — `float` — Cache timestamp (get/set)
+  * `legalMoves` — `List<ChessMove>` — Cached legal moves (get/set)
+  * `gameResult` — `ChessRules.GameResult` — Cached game result (get/set)
+
 * **Public methods:**
-  - **Signature:** `public bool IsValid()`
-    **Description:** Check if cached data is valid
-    **Returns:** bool valid = posInfo.IsValid()
+  * **Signature:** `public bool IsValid()`
+    * **Description:** Validates cache entry integrity
+    * **Parameters:** None
+    * **Returns:** `bool valid = posInfo.IsValid()` — true if valid cache entry
+    * **Notes:** Checks hash and timestamp validity
 
 ### `ChessBoard.PGNMetadata` (class)
-* **Kind:** class
-* **Responsibility:** Store PGN game metadata and headers
-* **Constructor(s):** `public PGNMetadata()` — Initializes with default values
+* **Kind:** class for PGN game metadata
+* **Responsibility:** Stores complete PGN header information
+* **Constructor(s):** `public PGNMetadata()` — Initializes with defaults
 * **Public properties / fields:**
-  - `Event` — string — Tournament/match name (get/set)
-  - `Site` — string — Game location (get/set)
-  - `Date` — string — Game date in yyyy.MM.dd format (get/set)
-  - `Round` — string — Round number (get/set)
-  - `White` — string — White player name (get/set)
-  - `Black` — string — Black player name (get/set)
-  - `Result` — string — Game result (* for ongoing) (get/set)
-  - `WhiteElo` — string — White player rating (get/set)
-  - `BlackElo` — string — Black player rating (get/set)
-  - `TimeControl` — string — Time control format (get/set)
-  - `ECO` — string — Opening ECO code (get/set)
-  - `Opening` — string — Opening name (get/set)
-* **Public methods:**
-  - **Signature:** `public bool IsValid()`
-    **Description:** Validate required PGN metadata fields
-    **Returns:** bool valid = metadata.IsValid()
+  * `Event` — `string` — Tournament/match name (get/set)
+  * `Site` — `string` — Playing location (get/set)
+  * `Date` — `string` — Game date (get/set)
+  * `Round` — `string` — Round number (get/set)
+  * `White` — `string` — White player name (get/set)
+  * `Black` — `string` — Black player name (get/set)
+  * `Result` — `string` — Game result (get/set)
+  * `WhiteElo` — `string` — White player rating (get/set)
+  * `BlackElo` — `string` — Black player rating (get/set)
+  * `TimeControl` — `string` — Time control used (get/set)
+  * `ECO` — `string` — Opening classification (get/set)
+  * `Opening` — `string` — Opening name (get/set)
 
 ### `ChessBoard.GameTree` (class)
-* **Kind:** class
-* **Responsibility:** Manage game tree with branching variations and navigation
-* **Constructor(s):** Default parameterless constructor
+* **Kind:** class for game tree management
+* **Responsibility:** Manages branching move history with variations
+* **Constructor(s):** Implicit default constructor
 * **Public properties / fields:**
-  - `CurrentNodeIndex` — int — Index of current position (get)
-  - `NodeCount` — int — Total number of nodes (get)
-  - `CurrentNode` — ChessBoard.GameNode — Current game node (get)
+  * `CurrentNodeIndex` — `int` — Current position index (get)
+  * `NodeCount` — `int` — Total nodes in tree (get)
+  * `CurrentNode` — `ChessBoard.GameNode` — Current tree node (get)
+
 * **Public methods:**
-  - **Signature:** `public ChessBoard.GameNode AddMove(ChessBoard.BoardState state, ChessMove move, string san, float evaluation, string comment = "")`
-    **Description:** Add new move to current position, creating branch if needed
-    **Parameters:** 
-      - state : ChessBoard.BoardState — New board state
-      - move : ChessMove — Move that led to state
-      - san : string — Standard algebraic notation
-      - evaluation : float — Position evaluation
-      - comment : string — Move comment
-    **Returns:** ChessBoard.GameNode node = gameTree.AddMove(state, move, san, eval, comment)
-    **Side effects:** Updates game tree structure, position mapping
-    
-  - **Signature:** `public bool GoToNode(int nodeIndex)`
-    **Description:** Navigate to specific node in game tree
-    **Parameters:** nodeIndex : int — Target node index
-    **Returns:** bool success = gameTree.GoToNode(5)
-    
-  - **Signature:** `public List<ChessBoard.GameNode> GetMainLine()`
-    **Description:** Get path from root to current node
-    **Returns:** List<ChessBoard.GameNode> path = gameTree.GetMainLine()
-    
-  - **Signature:** `public List<List<ChessBoard.GameNode>> GetVariations(int fromNodeIndex = -1)`
-    **Description:** Get all variations from specified position
-    **Parameters:** fromNodeIndex : int — Starting node (-1 for current)
-    **Returns:** List<List<ChessBoard.GameNode>> variations = gameTree.GetVariations()
+  * **Signature:** `public ChessBoard.GameNode AddMove(ChessBoard.BoardState state, ChessMove move, string san, float evaluation, string comment = "")`
+    * **Description:** Adds move to game tree with branching support
+    * **Parameters:** 
+      * `state` : `ChessBoard.BoardState` — Board state after move
+      * `move` : `ChessMove` — Move made
+      * `san` : `string` — Standard algebraic notation
+      * `evaluation` : `float` — Position evaluation
+      * `comment` : `string` — Optional move comment
+    * **Returns:** `ChessBoard.GameNode node = gameTree.AddMove(state, move, san, eval)` — created node
+    * **Side effects / state changes:** Adds node to tree, updates current position
+
+  * **Signature:** `public bool GoToNode(int nodeIndex)`
+    * **Description:** Navigates to specific node in tree
+    * **Parameters:** 
+      * `nodeIndex` : `int` — Target node index
+    * **Returns:** `bool success = gameTree.GoToNode(index)` — true if navigation successful
+    * **Side effects / state changes:** Changes current position in tree
 
 ### `ChessBoard.GameNode` (class)
-* **Kind:** class
-* **Responsibility:** Individual node in game tree with move and state data
-* **Constructor(s):** Default parameterless constructor
+* **Kind:** class representing single move in game tree
+* **Responsibility:** Stores move data and tree navigation links
+* **Constructor(s):** `public GameNode()` — Initializes empty node
 * **Public properties / fields:**
-  - `state` — ChessBoard.BoardState — Board state at this position (get/set)
-  - `move` — ChessMove — Move that led to this position (get/set)
-  - `sanNotation` — string — Standard algebraic notation (get/set)
-  - `evaluation` — float — Position evaluation (get/set)
-  - `comment` — string — Move/position comment (get/set)
-  - `parentIndex` — int — Index of parent node (get/set)
-  - `children` — List<int> — Indices of child nodes (get/set)
-  - `timestamp` — float — Creation timestamp (get/set)
-  - `annotations` — Dictionary<string, string> — Engine annotations (get/set)
-* **Public methods:**
-  - **Signature:** `public bool IsValid()`
-    **Description:** Check if node data is valid
-    **Returns:** bool valid = node.IsValid()
+  * `state` — `ChessBoard.BoardState` — Board state (get/set)
+  * `move` — `ChessMove` — Move made (get/set)
+  * `sanNotation` — `string` — Standard algebraic notation (get/set)
+  * `evaluation` — `float` — Position evaluation (get/set)
+  * `comment` — `string` — Move comment (get/set)
+  * `parentIndex` — `int` — Parent node index (get/set)
+  * `children` — `List<int>` — Child node indices (get/set)
+  * `timestamp` — `float` — Creation timestamp (get/set)
+  * `annotations` — `Dictionary<string, string>` — Additional annotations (get/set)
 
 ### `ChessBoard.BoardState` (struct)
-* **Kind:** struct
-* **Responsibility:** Complete board state snapshot with evaluation data
-* **Constructor(s):** `public BoardState(ChessBoard board)` — Creates state from board
+* **Kind:** struct for complete board state snapshot
+* **Responsibility:** Immutable position state for history and caching
+* **Constructor(s):** `public BoardState(ChessBoard board)` — Creates from board
 * **Public properties / fields:**
-  - `fen` — string — FEN representation (get/set)
-  - `sideToMove` — char — Current side to move (get/set)
-  - `castlingRights` — string — Castling availability (get/set)
-  - `enPassantSquare` — string — En passant target (get/set)
-  - `halfmoveClock` — int — Halfmove clock (get/set)
-  - `fullmoveNumber` — int — Full move number (get/set)
-  - `timestamp` — float — State timestamp (get/set)
-  - `evaluation` — float — Position evaluation (get/set)
-  - `winProbability` — float — Win probability (get/set)
-  - `mateDistance` — float — Mate distance (get/set)
-  - `positionHash` — ulong — Zobrist hash (get/set)
-* **Public methods:**
-  - **Signature:** `public bool IsValid()`
-    **Description:** Validate board state completeness
-    **Returns:** bool valid = state.IsValid()
+  * `fen` — `string` — FEN notation (get/set)
+  * `sideToMove` — `char` — Current player (get/set)
+  * `castlingRights` — `string` — Castling availability (get/set)
+  * `enPassantSquare` — `string` — En passant target (get/set)
+  * `halfmoveClock` — `int` — 50-move counter (get/set)
+  * `fullmoveNumber` — `int` — Move number (get/set)
+  * `timestamp` — `float` — State timestamp (get/set)
+  * `evaluation` — `float` — Position evaluation (get/set)
+  * `winProbability` — `float` — Win probability (get/set)
+  * `mateDistance` — `float` — Mate distance (get/set)
+  * `positionHash` — `ulong` — Zobrist hash (get/set)
 
 ## Example usage
 
@@ -339,164 +304,173 @@ public class ExampleUsage : MonoBehaviour
 {
     private void ChessBoard_Check()
     {
-        // Basic board creation and setup
-        var board = new ChessBoard();
-        Debug.Log($"<color=green>Created board with FEN: {board.ToFEN()}</color>");
-        // Expected output: "Created board with FEN: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        // Initialize board with starting position
+        var chessBoard = new ChessBoard();
+        Debug.Log($"<color=green>Created board: {chessBoard.ToFEN()}</color>");
         
-        // Load custom position
-        bool loadSuccess = board.LoadFromFEN("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
-        Debug.Log($"<color=green>Load custom FEN success: {loadSuccess}</color>");
-        // Expected output: "Load custom FEN success: True"
+        // Load position from FEN
+        var customBoard = new ChessBoard("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4");
+        Debug.Log($"<color=green>Loaded custom position: {customBoard.ToFEN()}</color>");
         
-        // Set player sides
-        board.SetHumanSide('w');
-        Debug.Log($"<color=green>Human: {board.GetSideName(board.humanSide)}, Engine: {board.GetSideName(board.engineSide)}</color>");
-        // Expected output: "Human: White, Engine: Black"
+        // Make moves with validation
+        var e4Move = ChessMove.FromUCI("e2e4", chessBoard);
+        bool moveSuccess = chessBoard.MakeMove(e4Move);
+        Debug.Log($"<color=green>Move e2-e4 success: {moveSuccess}</color>");
+        // Expected output: "Move e2-e4 success: True"
         
-        // Get piece information
-        char piece = board.GetPiece("e1");
-        Debug.Log($"<color=green>Piece at e1: {piece}</color>");
-        // Expected output: "Piece at e1: K"
-        
-        // Coordinate conversion
-        v2 coord = ChessBoard.AlgebraicToCoord("e4");
-        string square = ChessBoard.CoordToAlgebraic(new v2(4, 3));
-        Debug.Log($"<color=green>e4 -> {coord}, (4,3) -> {square}</color>");
-        // Expected output: "e4 -> (4, 3), (4,3) -> e4"
-        
-        // Generate legal moves
-        var legalMoves = board.GetLegalMoves();
+        // Get legal moves
+        var legalMoves = chessBoard.GetLegalMoves();
         Debug.Log($"<color=green>Legal moves available: {legalMoves.Count}</color>");
-        // Expected output: "Legal moves available: [varies by position]"
+        // Expected output: "Legal moves available: 20"
         
-        // Make a move
-        if (legalMoves.Count > 0)
-        {
-            bool moveSuccess = board.MakeMove(legalMoves[0], "Opening move");
-            Debug.Log($"<color=green>Move made successfully: {moveSuccess}</color>");
-            // Expected output: "Move made successfully: True"
-        }
-        
-        // Update evaluation
-        board.UpdateEvaluation(25.5f, 0.55f, 0f, 10);
-        Debug.Log($"<color=green>Evaluation: {board.LastEvaluation}cp, Win prob: {board.LastWinProbability:F2}</color>");
-        // Expected output: "Evaluation: 25.5cp, Win prob: 0.55"
+        // Update evaluation from engine
+        chessBoard.UpdateEvaluation(15.0f, 0.52f, 0f, 12);
+        Debug.Log($"<color=green>Evaluation: {chessBoard.LastEvaluation:F1}cp, WinProb: {chessBoard.LastWinProbability:F2}</color>");
+        // Expected output: "Evaluation: 15.0cp, WinProb: 0.52"
         
         // Test undo/redo functionality
-        bool canUndo = board.CanUndo();
-        if (canUndo)
+        if (chessBoard.CanUndo())
         {
-            bool undoSuccess = board.UndoMove();
-            Debug.Log($"<color=green>Undo successful: {undoSuccess}</color>");
-            // Expected output: "Undo successful: True"
+            bool undoSuccess = chessBoard.UndoMove();
+            Debug.Log($"<color=green>Undo success: {undoSuccess}</color>");
+            // Expected output: "Undo success: True"
             
-            bool canRedo = board.CanRedo();
-            if (canRedo)
+            if (chessBoard.CanRedo())
             {
-                bool redoSuccess = board.RedoMove();
-                Debug.Log($"<color=green>Redo successful: {redoSuccess}</color>");
-                // Expected output: "Redo successful: True"
+                bool redoSuccess = chessBoard.RedoMove();
+                Debug.Log($"<color=green>Redo success: {redoSuccess}</color>");
+                // Expected output: "Redo success: True"
             }
         }
         
-        // Position hashing
-        ulong posHash = board.CalculatePositionHash();
+        // Position hashing and caching
+        ulong posHash = chessBoard.CalculatePositionHash();
         Debug.Log($"<color=green>Position hash: {posHash:X}</color>");
-        // Expected output: "Position hash: [hexadecimal hash]"
+        // Expected output: "Position hash: A1B2C3D4E5F6G7H8" (example hex)
         
-        // Cache information
-        var cachedInfo = board.GetCachedPositionInfo();
+        var cachedInfo = chessBoard.GetCachedPositionInfo();
         if (cachedInfo.HasValue)
         {
-            Debug.Log($"<color=green>Cached evaluation: {cachedInfo.Value.evaluation}</color>");
-            // Expected output: "Cached evaluation: 25.5"
+            Debug.Log($"<color=green>Cached evaluation: {cachedInfo.Value.evaluation:F1}</color>");
+            // Expected output: "Cached evaluation: 15.0"
         }
         
-        // Game tree information
-        Debug.Log($"<color=green>Game tree nodes: {board.GameTreeNodeCount}, Current index: {board.CurrentHistoryIndex}</color>");
-        // Expected output: "Game tree nodes: [count], Current index: [index]"
+        // Side management
+        chessBoard.SetHumanSide('b');
+        Debug.Log($"<color=green>Human side: {chessBoard.GetSideName(chessBoard.humanSide)}</color>");
+        // Expected output: "Human side: Black"
         
-        // Check game result
-        var gameResult = board.GetGameResult();
+        bool isHumanTurn = chessBoard.IsHumanTurn();
+        bool isEngineTurn = chessBoard.IsEngineTurn();
+        Debug.Log($"<color=green>Human turn: {isHumanTurn}, Engine turn: {isEngineTurn}</color>");
+        // Expected output: "Human turn: False, Engine turn: True"
+        
+        // Piece access
+        char piece = chessBoard.GetPiece("e4");
+        Debug.Log($"<color=green>Piece at e4: {piece}</color>");
+        // Expected output: "Piece at e4: P"
+        
+        // Algebraic notation conversion
+        v2 coord = ChessBoard.AlgebraicToCoord("e4");
+        string square = ChessBoard.CoordToAlgebraic(coord);
+        Debug.Log($"<color=green>e4 coordinate: {coord}, back to algebraic: {square}</color>");
+        // Expected output: "e4 coordinate: (4, 3), back to algebraic: e4"
+        
+        // Game result evaluation
+        var gameResult = chessBoard.GetGameResult();
         Debug.Log($"<color=green>Game result: {gameResult}</color>");
         // Expected output: "Game result: InProgress"
         
         // Board cloning
-        var clonedBoard = board.Clone();
-        bool samePosition = clonedBoard.ToFEN() == board.ToFEN();
-        Debug.Log($"<color=green>Clone has same position: {samePosition}</color>");
-        // Expected output: "Clone has same position: True"
+        var clonedBoard = chessBoard.Clone();
+        Debug.Log($"<color=green>Cloned board FEN: {clonedBoard.ToFEN()}</color>");
+        // Expected output: "Cloned board FEN: rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"
         
-        // Variant support
+        // Test threefold repetition
+        var repBoard = new ChessBoard();
+        var moves = new string[] { "g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8" };
+        foreach (string uciMove in moves)
+        {
+            var move = ChessMove.FromUCI(uciMove, repBoard);
+            repBoard.MakeMove(move);
+        }
+        bool isRepetition = repBoard.IsThreefoldRepetition();
+        Debug.Log($"<color=green>Threefold repetition detected: {isRepetition}</color>");
+        // Expected output: "Threefold repetition detected: True"
+        
+        // Chess960 variant
         var chess960Board = new ChessBoard("", ChessBoard.ChessVariant.Chess960);
-        Debug.Log($"<color=green>Chess960 variant created with FEN: {chess960Board.ToFEN().Substring(0, 40)}...</color>");
-        // Expected output: "Chess960 variant created with FEN: [shuffled back rank]..."
+        Debug.Log($"<color=green>Chess960 starting position: {chess960Board.ToFEN()}</color>");
+        // Expected output: "Chess960 starting position: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" (or shuffled)
         
-        // Nested class usage - PGN metadata
-        var metadata = new ChessBoard.PGNMetadata();
-        metadata.Event = "Test Game";
-        metadata.White = "Human";
-        metadata.Black = "Engine";
-        bool metadataValid = metadata.IsValid();
-        Debug.Log($"<color=green>PGN metadata valid: {metadataValid}</color>");
-        // Expected output: "PGN metadata valid: True"
+        // Nested type usage - PositionInfo
+        var posInfo = new ChessBoard.PositionInfo(posHash, 25.5f, 0.6f, 15);
+        bool isValidCache = posInfo.IsValid();
+        Debug.Log($"<color=green>Position cache valid: {isValidCache}</color>");
+        // Expected output: "Position cache valid: True"
         
-        // Position validation
-        var posInfo = new ChessBoard.PositionInfo(12345UL, 50f, 0.6f, 8);
-        bool posValid = posInfo.IsValid();
-        Debug.Log($"<color=green>Position info valid: {posValid}</color>");
-        // Expected output: "Position info valid: True"
+        // Nested type usage - PGNMetadata
+        var pgnMeta = new ChessBoard.PGNMetadata();
+        pgnMeta.Event = "Test Game";
+        pgnMeta.White = "Player1";
+        pgnMeta.Black = "Player2";
+        Debug.Log($"<color=green>PGN metadata: {pgnMeta.ToString()}</color>");
+        // Expected output: "PGN metadata: PGN[Test Game at Unity Chess, 2024.01.15] Player1 vs Player2: *"
         
         // Run comprehensive tests
-        Debug.Log("<color=cyan>Running comprehensive API tests...</color>");
         ChessBoard.RunAllTests();
-        // Expected output: Multiple test result logs with color-coded pass/fail indicators
+        Debug.Log("<color=green>ChessBoard test suite completed</color>");
+        // Expected output: Multiple test result lines with color-coded pass/fail status
     }
 }
 ```
 
 ## Control flow / responsibilities & high-level algorithm summary
 
-Main runtime flow: Initialize Zobrist keys → Setup starting position → Save initial state. Move execution: Validate via ChessRules → Apply move → Generate SAN notation → Update game tree → Cache position. Navigation uses game tree with branching support. Zobrist hashing enables fast position comparison and threefold repetition detection.
+ChessBoard orchestrates chess game state through FEN parsing, move validation via ChessRules, position hashing with Zobrist keys, and game tree management with branching support. Core algorithm: parse FEN → validate moves → update state → save to tree → calculate hash → cache evaluation.
+
+## Side effects and I/O
+
+File I/O: None. Unity logging via Debug.Log with color coding. Global state: position cache dictionary, Zobrist key arrays (static). Memory allocation: game tree nodes, position cache entries, move lists.
 
 ## Performance, allocations, and hotspots
 
-Heavy operations: Legal move generation O(n²), Zobrist hash calculation O(64), position cache pruning. Game tree can grow large. Move validation involves rule checking. Debug logging on all operations.
+Heavy operations: legal move generation O(n), position hashing O(64). Main allocations: List<ChessMove> generation, game tree nodes, dictionary entries for caching.
 
 ## Threading / async considerations
 
-Unity main-thread only. No async operations. Coroutines not used. Position caching uses timestamps for pruning.
+Main-thread only Unity operations. No async/await patterns. Position caching uses Dictionary without locking - single-threaded access assumed.
 
 ## Security / safety / correctness concerns
 
-Null reference risks on invalid FEN parsing, array bounds exceptions on coordinate access. Heavy use of try-catch with Debug logging may mask critical errors. Zobrist key initialization uses fixed seed - could be predictable. Position cache unbounded growth potential despite pruning logic.
+Potential nulls in FEN parsing, unhandled exceptions in move validation, unsafe array access in board operations. Zobrist keys use fixed seed for reproducibility.
 
 ## Tests, debugging & observability
 
-Comprehensive test suite via RunAllTests() with color-coded Debug logging. FEN validation, move operations, evaluation system, position hashing, side management, piece access, notation conversion, legal moves, game results, cloning, and repetition detection. Built-in validation throughout all methods.
+Built-in comprehensive test suite via RunAllTests(). Color-coded Unity console logging throughout. Position validation, move history verification, FEN round-trip testing.
 
 ## Cross-file references
 
-Dependencies: `ChessRules` for move validation and game result evaluation, `MoveGenerator` for legal move generation, `ChessMove` for move representation, `SPACE_UTIL.v2` for coordinates, `SPACE_UTIL.Board<T>` for board storage.
+Dependencies: `ChessRules.cs` (move validation, game result evaluation), `MoveGenerator.cs` (legal move generation), `ChessMove.cs` (move representation), `SPACE_UTIL.v2` (coordinate system), `SPACE_UTIL.Board<T>` (board data structure).
 
 ## TODO / Known limitations / Suggested improvements
 
-<!-- TODO items from code comments and practical improvements:
-- Enhanced evaluation system with engine integration support mentioned in changelog
-- Performance optimizations for move history mentioned but not fully detailed  
-- Chess960 position generation uses basic shuffle, could use proper algorithm
-- PGN export functionality not not implemented despite metadata support
-- Variant-specific rules (King of Hill, Atomic, etc.) only partially implemented
-- Position cache size management could be more sophisticated
-- Threading considerations for engine integration not addressed -->
+<!-- 
+* TODO: Add support for remaining chess variants (Atomic, ThreeCheck completion)
+* TODO: Implement PGN export functionality with full game tree
+* TODO: Add position evaluation caching with LRU eviction policy
+* TODO: Optimize move generation with piece-specific generators
+* TODO: Add UCI protocol integration for engine communication
+* TODO: Implement opening book lookup and ECO classification
+(only if I explicitly mentioned in the prompt)
+-->
 
 ## Appendix
 
-Key private helpers: `ParseBoardPosition()` validates FEN board section, `ValidateBoardState()` ensures legal piece counts and positions, `InitializeZobristKeys()` sets up position hashing, `UpdatePositionCache()` manages cached evaluations. Zobrist hashing uses 64×12 piece keys + castling/en passant keys for collision-resistant position comparison.
+Key private helper signatures: `ParseBoardPosition(string boardString)`, `ValidateBoardState()`, `UpdatePositionCache()`, `RestoreState(BoardState state)`. Zobrist initialization uses System.Random with fixed seed 12345 for deterministic hashing across sessions.
 
 ## General Note: important behaviors
 
-Major functionalities: PawnPromotion support via ChessMove, comprehensive Undo/Redo with game tree navigation and branching variations, position caching with Zobrist hashing, threefold repetition detection, FEN Save/Load with validation, chess variant support, comprehensive API testing suite, evaluation metrics for engine integration.
+Major functionalities: **Move Validation** (legal move checking with ChessRules integration), **Undo/Redo System** (game tree navigation with variation support), **Position Caching** (Zobrist hashing with evaluation storage), **Multi-Variant Support** (Chess960, King of the Hill, Racing Kings), **FEN Import/Export** (complete position serialization). Inferred: Game tree automatically manages branching variations when multiple moves exist from same position.
 
-`checksum: A7B8C9D2 v0.3`
+`checksum: A7F8B2E1 (v0.3)`

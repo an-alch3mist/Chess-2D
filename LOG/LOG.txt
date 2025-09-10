@@ -1,0 +1,88 @@
+ LIST<ChessMove> Count: 26 
+---------------------------
+ a1b1                      
+ a1c1                      
+ a1d1                      
+ a1a2                      
+ a1a3                      
+ a1a4                      
+ a1a5                      
+ a1a6                      
+ a1a7                      
+ a1a8 (captures r)         
+ e1f1                      
+ e1d1                      
+ e1e2                      
+ e1f2                      
+ e1d2                      
+ h1g1                      
+ h1f1                      
+ h1h2                      
+ h1h3                      
+ h1h4                      
+ h1h5                      
+ h1h6                      
+ h1h7                      
+ h1h8 (captures r)         
+ e1g1 (castling)           
+ e1c1 (castling)           
+
+
+ LIST<ChessMove> Count: 26 
+---------------------------
+ a1b1                      
+ a1c1                      
+ a1d1                      
+ a1a2                      
+ a1a3                      
+ a1a4                      
+ a1a5                      
+ a1a6                      
+ a1a7                      
+ a1a8 (captures r)         
+ e1f1                      
+ e1d1                      
+ e1e2                      
+ e1f2                      
+ e1d2                      
+ h1g1                      
+ h1f1                      
+ h1h2                      
+ h1h3                      
+ h1h4                      
+ h1h5                      
+ h1h6                      
+ h1h7                      
+ h1h8 (captures r)         
+ e1g1 (castling)           
+ e1c1 (castling)           
+
+
+ LIST<ChessMove> Count: 26 
+---------------------------
+ a1b1                      
+ a1c1                      
+ a1d1                      
+ a1a2                      
+ a1a3                      
+ a1a4                      
+ a1a5                      
+ a1a6                      
+ a1a7                      
+ a1a8 (captures r)         
+ e1f1                      
+ e1d1                      
+ e1e2                      
+ e1f2                      
+ e1d2                      
+ h1g1                      
+ h1f1                      
+ h1h2                      
+ h1h3                      
+ h1h4                      
+ h1h5                      
+ h1h6                      
+ h1h7                      
+ h1h8 (captures k)         
+ e1g1 (castling)           
+ e1c1 (castling)           

@@ -132,7 +132,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 312026293}
-  - component: {fileID: 312026295}
   - component: {fileID: 312026294}
   m_Layer: 0
   m_Name: GameObject
@@ -164,37 +163,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 312026292}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6f20a0ffe259f9c4f944d61822df17e9, type: 3}
+  m_Script: {fileID: 11500000, guid: 3ba767a5465fed2468d0c57c823d7211, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  defaultTimeoutMs: 20000
-  enableDebugLogging: 1
-  enableEvaluation: 1
-  defaultDepth: 12
-  evalDepth: 15
-  defaultElo: 1500
-  defaultSkillLevel: 8
-  OnEngineLine:
-    m_PersistentCalls:
-      m_Calls: []
---- !u!114 &312026295
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 312026292}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 75b4537621718fc40a72df37c8c51f24, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  stockfishBridge: {fileID: 312026294}
-  promotionUI: {fileID: 0}
-  statusText: {fileID: 0}
-  evaluationText: {fileID: 0}
-  runExamplesOnStart: 0
-  testFEN: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 --- !u!1 &717439680
 GameObject:
   m_ObjectHideFlags: 0
@@ -243,12 +214,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1280, y: 720}
   m_ScreenMatchMode: 0
-  m_MatchWidthOrHeight: 0
+  m_MatchWidthOrHeight: 1
   m_PhysicalUnit: 3
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96

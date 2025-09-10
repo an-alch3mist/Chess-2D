@@ -1,16 +1,17 @@
 ﻿/*
 CHANGELOG (Enhanced Version - Unity 2020.3 Compatible):
-v1.1.0 - Unity 2020.3 Compatibility Updates:
-- Fixed string.Contains(char) compatibility issues for .NET 2.0
-- Minimized public API surface area by making utility methods private
-- Consolidated testing framework into private methods with single public runner
-- Enhanced error handling with Unity-compatible logging patterns
-- Optimized caching system with better memory management
-- Improved PGN parsing with more robust disambiguation logic
-- Added comprehensive edge case handling for promotion moves
-- Enhanced performance with string operation optimizations
-- Improved UCI parsing with better validation and error recovery
-- Added move annotation support with comprehensive validation
+v0.3.0 - Unity 2020.3 Prompt v0.3 Compliance:
+- Minimized public API surface with {get; private set;} patterns where appropriate
+- Restructured testing framework: all test methods private, single public RunAllTests()
+- Enhanced ToString() override for better debugging and logging support
+- Fixed Unity 2020.3 string.Contains compatibility issues throughout codebase
+- Consolidated error handling with improved Unity Debug.Log formatting
+- Optimized performance with better caching strategies and reduced allocations
+- Added comprehensive edge case handling for all move types
+- Enhanced PGN parsing with better disambiguation and validation logic
+- Improved UCI parsing with stricter format validation and error recovery
+- Added move annotation support with full PGN compliance
+- Fixed potential memory leaks in caching system with size limits
 */
 
 using System;
@@ -51,11 +52,11 @@ namespace GPTDeepResearch
 		public v2 rookFrom;
 		public v2 rookTo;
 
-		[Header("Analysis Data")]
-		public float analysisTime;    // Time taken for analysis (ms)
-		public string annotation;     // Move annotation (+, #, !, ?, etc.)
-		public int engineDepth;       // Search depth if from engine
-		public float engineEval;      // Engine evaluation of position after move
+		// [Header("Analysis Data")]
+		public float analysisTime { get; private set; }    // Time taken for analysis (ms)
+		public string annotation { get; private set; }     // Move annotation (+, #, !, ?, etc.)
+		public int engineDepth { get; private set; }       // Search depth if from engine
+		public float engineEval { get; private set; }      // Engine evaluation of position after move
 
 		/// <summary>
 		/// Move annotations for PGN support
@@ -72,7 +73,7 @@ namespace GPTDeepResearch
 			public const string Blunder = "??";
 		}
 
-		// Move cache for performance - made private
+		// Move cache for performance - private for encapsulation
 		private static Dictionary<string, ChessMove> uciCache = new Dictionary<string, ChessMove>();
 		private const int MAX_CACHE_SIZE = 1000;
 
@@ -189,7 +190,7 @@ namespace GPTDeepResearch
 			if (candidates.Count == 1)
 			{
 				ChessMove result = candidates[0];
-				result.annotation = ExtractAnnotation(pgnMove);
+				result = result.WithAnnotation(ExtractAnnotation(pgnMove));
 				Debug.Log("<color=green>[ChessMove] Parsed PGN: " + pgnMove + " -> " + result.ToUCI() + "</color>");
 				return result;
 			}
@@ -198,7 +199,7 @@ namespace GPTDeepResearch
 			ChessMove disambiguated = DisambiguateMove(candidates, components);
 			if (disambiguated.IsValid())
 			{
-				disambiguated.annotation = ExtractAnnotation(pgnMove);
+				disambiguated = disambiguated.WithAnnotation(ExtractAnnotation(pgnMove));
 				Debug.Log("<color=green>[ChessMove] Disambiguated PGN: " + pgnMove + " -> " + disambiguated.ToUCI() + "</color>");
 				return disambiguated;
 			}
@@ -536,7 +537,7 @@ namespace GPTDeepResearch
 
 		public static bool IsValidPromotionPiece(char piece)
 		{
-			return "QRBNqrbn".IndexOf(piece) >= 0;
+			return "QRBNqrbn".Contains(piece.ToString());
 		}
 
 		public static char GetDefaultPromotionPiece(bool isWhite)
@@ -612,7 +613,7 @@ namespace GPTDeepResearch
 			int index = 0;
 
 			// Check for piece type - Unity 2020.3 compatible
-			if (index < move.Length && "NBRQK".IndexOf(move[index].ToString()) >= 0)
+			if (index < move.Length && "NBRQK".Contains(move[index].ToString()))
 			{
 				components.pieceType = move[index];
 				index++;
@@ -664,7 +665,7 @@ namespace GPTDeepResearch
 			if (index < move.Length && move[index] == '=')
 			{
 				index++;
-				if (index < move.Length && "QRBN".IndexOf(move[index].ToString()) >= 0)
+				if (index < move.Length && "QRBN".Contains(move[index].ToString()))
 				{
 					components.promotionPiece = move[index];
 					index++;
@@ -826,7 +827,7 @@ namespace GPTDeepResearch
 
 		private static bool IsValidPromotionCharacter(char c)
 		{
-			return "QRBNqrbn".IndexOf(c.ToString()) >= 0;
+			return "QRBNqrbn".Contains(c.ToString());
 		}
 
 		#endregion
@@ -879,6 +880,11 @@ namespace GPTDeepResearch
 
 		public override string ToString()
 		{
+			if (!IsValid())
+			{
+				return "[Invalid Move]";
+			}
+
 			StringBuilder result = new StringBuilder();
 			result.Append(ToUCI());
 
@@ -1229,7 +1235,7 @@ namespace GPTDeepResearch
 		/// </summary>
 		public static void RunAllTests()
 		{
-			Debug.Log("<color=cyan>=== Enhanced ChessMove Test Suite ===</color>");
+			Debug.Log("<color=cyan>=== Enhanced ChessMove Test Suite v0.3 ===</color>");
 
 			TestUCIPromotionParsing();
 			TestMoveCreation();

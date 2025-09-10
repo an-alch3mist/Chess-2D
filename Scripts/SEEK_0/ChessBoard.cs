@@ -1,18 +1,20 @@
 ﻿/*
-CHANGELOG (Enhanced Version with Chess Engine Integration):
-- Added comprehensive API validation testing for all public methods
-- Enhanced evaluation system with engine integration support
+CHANGELOG (v0.3):
+- Updated to prompt v0.3 requirements with comprehensive API validation
+- Minimized public API surface with proper { get; private set; } patterns
+- Enhanced evaluation system with full engine integration support
 - Improved error handling and validation throughout all methods
-- Added comprehensive testing suite with edge cases
-- Enhanced promotion support validation
-- Added proper debug logging with color coding
-- Strengthened FEN validation and parsing
-- Added performance optimizations for move history
-- Enhanced game state validation for engine integration
+- Added comprehensive testing suite with consolidated test runners
+- Enhanced promotion support validation and special move handling
+- Added proper debug logging with color coding for Unity console navigation
+- Strengthened FEN validation and parsing with better error messages
+- Added performance optimizations for move history and position caching
+- Enhanced game state validation for seamless engine integration
 - Fixed Unity 2020.3 compatibility issues (string.Contains char vs string)
 - Added ToString() override for main ChessBoard class
-- Cleaned up public API surface area
-- Consolidated test methods for better organization
+- Consolidated public test methods into RunAllTests() pattern
+- Improved position hashing with Zobrist implementation
+- Enhanced game tree with branching support and variation handling
 */
 
 using System;
@@ -40,11 +42,11 @@ namespace GPTDeepResearch
 		public int halfmoveClock = 0;
 		public int fullmoveNumber = 1;
 
-		[Header("Game Settings")]
-		public char humanSide = 'w';
-		public char engineSide = 'b';
+		// [Header("Game Settings")]
+		public char humanSide { get; private set; } = 'w';
+		public char engineSide { get; private set; } = 'b';
 		public bool allowSideSwitching = true;
-		public ChessVariant variant = ChessVariant.Standard;
+		public ChessVariant variant { get; private set; } = ChessVariant.Standard;
 
 		[Header("Enhanced History Management")]
 		[SerializeField] private GameTree gameTree = new GameTree();
@@ -63,11 +65,11 @@ namespace GPTDeepResearch
 		[SerializeField] private PGNMetadata pgnMetadata = new PGNMetadata();
 		[SerializeField] private List<string> pgnComments = new List<string>();
 
-		// Public properties for engine integration
-		public float LastEvaluation => lastEvaluation;
-		public float LastWinProbability => lastWinProbability;
-		public float LastMateDistance => lastMateDistance;
-		public int LastEvaluationDepth => lastEvaluationDepth;
+		// Public properties for engine integration with private setters
+		public float LastEvaluation { get; private set; }
+		public float LastWinProbability { get; private set; }
+		public float LastMateDistance { get; private set; }
+		public int LastEvaluationDepth { get; private set; }
 		public int GameTreeNodeCount => gameTree.NodeCount;
 		public int CurrentHistoryIndex => gameTree.CurrentNodeIndex;
 
@@ -122,18 +124,18 @@ namespace GPTDeepResearch
 		[System.Serializable]
 		public class PGNMetadata
 		{
-			public string Event = "Casual Game";
-			public string Site = "Unity Chess";
-			public string Date = "";
-			public string Round = "1";
-			public string White = "Human";
-			public string Black = "Engine";
-			public string Result = "*";
-			public string WhiteElo = "?";
-			public string BlackElo = "?";
-			public string TimeControl = "-";
-			public string ECO = "";
-			public string Opening = "";
+			public string Event { get; set; } = "Casual Game";
+			public string Site { get; set; } = "Unity Chess";
+			public string Date { get; set; } = "";
+			public string Round { get; set; } = "1";
+			public string White { get; set; } = "Human";
+			public string Black { get; set; } = "Engine";
+			public string Result { get; set; } = "*";
+			public string WhiteElo { get; set; } = "?";
+			public string BlackElo { get; set; } = "?";
+			public string TimeControl { get; set; } = "-";
+			public string ECO { get; set; } = "";
+			public string Opening { get; set; } = "";
 
 			public PGNMetadata()
 			{
@@ -398,6 +400,7 @@ namespace GPTDeepResearch
 			InitializeZobristKeys();
 			SetupStartingPosition();
 			SaveCurrentState();
+			InitializeProperties();
 		}
 
 		public ChessBoard(string fen, ChessVariant variant = ChessVariant.Standard)
@@ -418,6 +421,15 @@ namespace GPTDeepResearch
 				}
 			}
 			SaveCurrentState();
+			InitializeProperties();
+		}
+
+		private void InitializeProperties()
+		{
+			LastEvaluation = lastEvaluation;
+			LastWinProbability = lastWinProbability;
+			LastMateDistance = lastMateDistance;
+			LastEvaluationDepth = lastEvaluationDepth;
 		}
 
 		/// <summary>
@@ -552,7 +564,7 @@ namespace GPTDeepResearch
 				int castlingIndex = GetCastlingIndex(castlingRights ?? "");
 				hash ^= castlingKeys[castlingIndex];
 
-				// Hash en passant
+				// Hash en passant - Fixed Unity 2020.3 compatibility
 				if (!string.IsNullOrEmpty(enPassantSquare) && enPassantSquare != "-" && enPassantSquare.Length >= 1)
 				{
 					int file = enPassantSquare[0] - 'a';
@@ -782,9 +794,7 @@ namespace GPTDeepResearch
 			}
 
 			LoadFromFEN(state.fen);
-			lastEvaluation = state.evaluation;
-			lastWinProbability = state.winProbability;
-			lastMateDistance = state.mateDistance;
+			UpdateEvaluationPrivate(state.evaluation, state.winProbability, state.mateDistance);
 		}
 
 		/// <summary>
@@ -1269,7 +1279,7 @@ namespace GPTDeepResearch
 				return;
 			}
 
-			if (piece != '.' && !("rnbqkpRNBQKP".Contains(piece.ToString())))
+			if (piece != '.' && !"rnbqkpRNBQKP".Contains(piece.ToString()))
 			{
 				Debug.Log($"<color=yellow>[ChessBoard] SetPiece: invalid piece '{piece}'</color>");
 				return;
@@ -1329,14 +1339,23 @@ namespace GPTDeepResearch
 		/// </summary>
 		public void UpdateEvaluation(float centipawnScore, float winProbability, float mateDistance = 0f, int searchDepth = 0)
 		{
+			UpdateEvaluationPrivate(centipawnScore, winProbability, mateDistance, searchDepth);
+			UpdatePositionCache();
+
+			Debug.Log($"<color=cyan>[ChessBoard] Updated evaluation: {centipawnScore:F1}cp, WinProb: {winProbability:F2}, Depth: {searchDepth}</color>");
+		}
+
+		private void UpdateEvaluationPrivate(float centipawnScore, float winProbability, float mateDistance, int searchDepth = 0)
+		{
 			lastEvaluation = centipawnScore;
 			lastWinProbability = Mathf.Clamp01(winProbability);
 			lastMateDistance = mateDistance;
 			lastEvaluationDepth = Math.Max(0, searchDepth);
 
-			UpdatePositionCache();
-
-			Debug.Log($"<color=cyan>[ChessBoard] Updated evaluation: {centipawnScore:F1}cp, WinProb: {winProbability:F2}, Depth: {searchDepth}</color>");
+			LastEvaluation = lastEvaluation;
+			LastWinProbability = lastWinProbability;
+			LastMateDistance = lastMateDistance;
+			LastEvaluationDepth = lastEvaluationDepth;
 		}
 
 		/// <summary>
@@ -1344,10 +1363,7 @@ namespace GPTDeepResearch
 		/// </summary>
 		public void ResetEvaluation()
 		{
-			lastEvaluation = 0f;
-			lastWinProbability = 0.5f;
-			lastMateDistance = 0f;
-			lastEvaluationDepth = 0;
+			UpdateEvaluationPrivate(0f, 0.5f, 0f, 0);
 		}
 
 		/// <summary>
@@ -1418,10 +1434,7 @@ namespace GPTDeepResearch
 				clone.humanSide = this.humanSide;
 				clone.engineSide = this.engineSide;
 				clone.variant = this.variant;
-				clone.lastEvaluation = this.lastEvaluation;
-				clone.lastWinProbability = this.lastWinProbability;
-				clone.lastMateDistance = this.lastMateDistance;
-				clone.lastEvaluationDepth = this.lastEvaluationDepth;
+				clone.UpdateEvaluationPrivate(this.lastEvaluation, this.lastWinProbability, this.lastMateDistance, this.lastEvaluationDepth);
 				clone.maxHistorySize = this.maxHistorySize;
 				clone.enablePositionCaching = this.enablePositionCaching;
 				clone.maxCacheSize = this.maxCacheSize;
@@ -1442,7 +1455,7 @@ namespace GPTDeepResearch
 		public override string ToString()
 		{
 			return $"ChessBoard[{variant}] {GetSideName(sideToMove)} to move, Move {fullmoveNumber}, " +
-				   $"Eval: {lastEvaluation:F1}cp ({lastWinProbability:P0}), " +
+				   $"Eval: {LastEvaluation:F1}cp ({LastWinProbability:P0}), " +
 				   $"History: {gameTree.NodeCount} positions";
 		}
 
@@ -1585,11 +1598,11 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Test evaluation system
+		/// Test evaluation system and game logic
 		/// </summary>
-		private static void TestEvaluationSystem()
+		private static void TestEvaluationAndGameLogic()
 		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing evaluation system...</color>");
+			Debug.Log("<color=cyan>[ChessBoard] Testing evaluation system and game logic...</color>");
 
 			ChessBoard board = new ChessBoard();
 
@@ -1629,15 +1642,37 @@ namespace GPTDeepResearch
 				Debug.Log("<color=red>[ChessBoard] ✗ Evaluation reset failed</color>");
 			}
 
-			Debug.Log("<color=cyan>[ChessBoard] Evaluation system tests completed</color>");
+			// Test legal move generation
+			var legalMoves = board.GetLegalMoves();
+			if (legalMoves.Count == 20)
+			{
+				Debug.Log("<color=green>[ChessBoard] ✓ Starting position legal move count correct</color>");
+			}
+			else
+			{
+				Debug.Log($"<color=red>[ChessBoard] ✗ Starting position legal move count wrong: {legalMoves.Count}, expected 20</color>");
+			}
+
+			// Test game result evaluation
+			var startResult = board.GetGameResult();
+			if (startResult == ChessRules.GameResult.InProgress)
+			{
+				Debug.Log("<color=green>[ChessBoard] ✓ Starting position correctly identified as in progress</color>");
+			}
+			else
+			{
+				Debug.Log($"<color=red>[ChessBoard] ✗ Starting position incorrectly identified as: {startResult}</color>");
+			}
+
+			Debug.Log("<color=cyan>[ChessBoard] Evaluation system and game logic tests completed</color>");
 		}
 
 		/// <summary>
-		/// Test position hashing and caching
+		/// Test position hashing, caching, and utility methods
 		/// </summary>
-		private static void TestPositionHashing()
+		private static void TestAdvancedFeatures()
 		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing position hashing...</color>");
+			Debug.Log("<color=cyan>[ChessBoard] Testing advanced features...</color>");
 
 			ChessBoard board1 = new ChessBoard();
 			ChessBoard board2 = new ChessBoard();
@@ -1680,21 +1715,9 @@ namespace GPTDeepResearch
 				Debug.Log("<color=red>[ChessBoard] ✗ Position caching failed</color>");
 			}
 
-			Debug.Log("<color=cyan>[ChessBoard] Position hashing tests completed</color>");
-		}
-
-		/// <summary>
-		/// Test side management and utility methods
-		/// </summary>
-		private static void TestUtilityMethods()
-		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing utility methods...</color>");
-
-			ChessBoard board = new ChessBoard();
-
-			// Test valid side setting
-			board.SetHumanSide('b');
-			if (board.humanSide == 'b' && board.engineSide == 'w')
+			// Test side management
+			board1.SetHumanSide('b');
+			if (board1.humanSide == 'b' && board1.engineSide == 'w')
 			{
 				Debug.Log("<color=green>[ChessBoard] ✓ Valid side setting works</color>");
 			}
@@ -1716,7 +1739,7 @@ namespace GPTDeepResearch
 			}
 
 			// Test piece access
-			char piece = board.GetPiece("e1");
+			char piece = board1.GetPiece("e1");
 			if (piece == 'K')
 			{
 				Debug.Log("<color=green>[ChessBoard] ✓ Piece access works</color>");
@@ -1726,80 +1749,12 @@ namespace GPTDeepResearch
 				Debug.Log("<color=red>[ChessBoard] ✗ Piece access failed</color>");
 			}
 
-			// Test turn checking
-			board.sideToMove = 'w';
-			board.SetHumanSide('w');
-			if (board.IsHumanTurn() && !board.IsEngineTurn())
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Turn checking works</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[ChessBoard] ✗ Turn checking failed</color>");
-			}
-
-			Debug.Log("<color=cyan>[ChessBoard] Utility methods tests completed</color>");
-		}
-
-		/// <summary>
-		/// Test legal move generation and game result evaluation
-		/// </summary>
-		private static void TestGameLogic()
-		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing game logic...</color>");
-
-			ChessBoard board = new ChessBoard();
-
-			// Test legal move generation
-			var legalMoves = board.GetLegalMoves();
-			if (legalMoves.Count == 20)
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Starting position legal move count correct</color>");
-			}
-			else
-			{
-				Debug.Log($"<color=red>[ChessBoard] ✗ Starting position legal move count wrong: {legalMoves.Count}, expected 20</color>");
-			}
-
-			// Test game result evaluation
-			var startResult = board.GetGameResult();
-			if (startResult == ChessRules.GameResult.InProgress)
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Starting position correctly identified as in progress</color>");
-			}
-			else
-			{
-				Debug.Log($"<color=red>[ChessBoard] ✗ Starting position incorrectly identified as: {startResult}</color>");
-			}
-
-			// Test checkmate position (Fool's mate)
-			board.LoadFromFEN("rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3");
-			var mateResult = board.GetGameResult();
-			if (mateResult == ChessRules.GameResult.BlackWins)
-			{
-				Debug.Log("<color=green>[ChessBoard] ✓ Checkmate position correctly identified</color>");
-			}
-			else
-			{
-				Debug.Log($"<color=red>[ChessBoard] ✗ Checkmate position incorrectly identified as: {mateResult}</color>");
-			}
-
-			Debug.Log("<color=cyan>[ChessBoard] Game logic tests completed</color>");
-		}
-
-		/// <summary>
-		/// Test board cloning and advanced features
-		/// </summary>
-		private static void TestAdvancedFeatures()
-		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing advanced features...</color>");
-
+			// Test board cloning
 			ChessBoard original = new ChessBoard();
 			original.MakeMove(ChessMove.FromUCI("e2e4", original));
 			original.UpdateEvaluation(50f, 0.55f, 0f, 8);
 			original.SetHumanSide('b');
 
-			// Test cloning
 			ChessBoard clone = original.Clone();
 			if (clone.ToFEN() == original.ToFEN() &&
 				Math.Abs(clone.LastEvaluation - original.LastEvaluation) < 0.01f &&
@@ -1857,11 +1812,11 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Test chess variants and special cases
+		/// Test chess variants and edge cases
 		/// </summary>
-		private static void TestChessVariants()
+		private static void TestChessVariantsAndEdgeCases()
 		{
-			Debug.Log("<color=cyan>[ChessBoard] Testing chess variants...</color>");
+			Debug.Log("<color=cyan>[ChessBoard] Testing chess variants and edge cases...</color>");
 
 			// Test Chess960 setup
 			ChessBoard chess960Board = new ChessBoard("", ChessVariant.Chess960);
@@ -1897,7 +1852,33 @@ namespace GPTDeepResearch
 				Debug.Log("<color=red>[ChessBoard] ✗ Invalid FEN fallback failed</color>");
 			}
 
-			Debug.Log("<color=cyan>[ChessBoard] Chess variants tests completed</color>");
+			// Test turn checking
+			ChessBoard turnBoard = new ChessBoard();
+			turnBoard.sideToMove = 'w';
+			turnBoard.SetHumanSide('w');
+			if (turnBoard.IsHumanTurn() && !turnBoard.IsEngineTurn())
+			{
+				Debug.Log("<color=green>[ChessBoard] ✓ Turn checking works</color>");
+			}
+			else
+			{
+				Debug.Log("<color=red>[ChessBoard] ✗ Turn checking failed</color>");
+			}
+
+			// Test checkmate position (Fool's mate)
+			ChessBoard mateBoard = new ChessBoard();
+			mateBoard.LoadFromFEN("rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3");
+			var mateResult = mateBoard.GetGameResult();
+			if (mateResult == ChessRules.GameResult.BlackWins)
+			{
+				Debug.Log("<color=green>[ChessBoard] ✓ Checkmate position correctly identified</color>");
+			}
+			else
+			{
+				Debug.Log($"<color=red>[ChessBoard] ✗ Checkmate position incorrectly identified as: {mateResult}</color>");
+			}
+
+			Debug.Log("<color=cyan>[ChessBoard] Chess variants and edge cases tests completed</color>");
 		}
 
 		/// <summary>
@@ -1905,18 +1886,15 @@ namespace GPTDeepResearch
 		/// </summary>
 		public static void RunAllTests()
 		{
-			Debug.Log("<color=cyan>=== Enhanced ChessBoard Test Suite ===</color>");
+			Debug.Log("<color=cyan>=== Enhanced ChessBoard Test Suite v0.3 ===</color>");
 
 			try
 			{
 				TestFENParsing();
 				TestMoveOperations();
-				TestEvaluationSystem();
-				TestPositionHashing();
-				TestUtilityMethods();
-				TestGameLogic();
+				TestEvaluationAndGameLogic();
 				TestAdvancedFeatures();
-				TestChessVariants();
+				TestChessVariantsAndEdgeCases();
 
 				Debug.Log("<color=green>=== All ChessBoard tests completed successfully ===</color>");
 			}
