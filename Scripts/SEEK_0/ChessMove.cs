@@ -688,6 +688,9 @@ namespace GPTDeepResearch
 			return components;
 		}
 
+		//modify FindCandidateMoves method
+		// problem was: if (!components.isCapture && move.IsCapture() && movePieceType != 'P') continue;
+		/*
 		private static List<ChessMove> FindCandidateMoves(List<ChessMove> legalMoves, PGNComponents components)
 		{
 			var candidates = new List<ChessMove>();
@@ -709,6 +712,44 @@ namespace GPTDeepResearch
 				// Check capture requirement
 				if (components.isCapture && !move.IsCapture()) continue;
 				if (!components.isCapture && move.IsCapture() && movePieceType != 'P') continue;
+
+				// Check promotion
+				if (components.promotionPiece != '\0')
+				{
+					if (move.moveType != MoveType.Promotion ||
+						char.ToUpper(move.promotionPiece) != components.promotionPiece)
+						continue;
+				}
+
+				candidates.Add(move);
+			}
+
+			return candidates;
+		}
+		*/
+
+		private static List<ChessMove> FindCandidateMoves(List<ChessMove> legalMoves, PGNComponents components)
+		{
+			var candidates = new List<ChessMove>();
+			v2 targetCoord = ChessBoard.AlgebraicToCoord(components.targetSquare);
+
+			if (targetCoord.x < 0) return candidates;
+
+			foreach (var move in legalMoves)
+			{
+				// Check if target matches
+				if (move.to != targetCoord) continue;
+
+				// Check piece type
+				char movePieceType = char.ToUpper(move.piece);
+				char expectedType = components.pieceType == '\0' ? 'P' : components.pieceType;
+
+				if (movePieceType != expectedType) continue;
+
+				// Check capture requirement - FIXED: Only enforce capture restriction if explicitly marked
+				if (components.isCapture && !move.IsCapture()) continue;
+				// Remove the overly strict non-capture check for pieces other than pawns
+				// The original logic was rejecting valid quiet moves like Bc4
 
 				// Check promotion
 				if (components.promotionPiece != '\0')
@@ -1066,6 +1107,7 @@ namespace GPTDeepResearch
 				}
 				else
 				{
+
 					Debug.Log("<color=yellow>[ChessMove] ? PGN parse failed: " + moveStr + "</color>");
 				}
 			}

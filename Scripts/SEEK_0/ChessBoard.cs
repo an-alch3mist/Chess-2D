@@ -914,11 +914,12 @@ namespace GPTDeepResearch
 			try
 			{
 				string[] parts = fen.Trim().Split(' ');
-				if (parts.Length < 1)
+				if (parts.Length < 6) // Changed from < 1 to < 6
 				{
-					Debug.Log("<color=red>[ChessBoard] Invalid FEN: no board position</color>");
+					Debug.Log($"<color=red>[ChessBoard] Invalid FEN: incomplete format, expected 6 parts but got {parts.Length}</color>");
 					return false;
 				}
+
 
 				if (!ParseBoardPosition(parts[0]))
 				{
@@ -1475,7 +1476,7 @@ namespace GPTDeepResearch
 				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", // Starting position
 				"r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", // Castling test
 				"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", // En passant
-				"8/8/8/8/8/8/8/4K3 w - - 50 75", // Endgame with move counters
+				"8/8/8/8/3k4/8/8/4K3 w - - 50 75", // Endgame with move counters
 				"r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4" // Italian game
 			};
 
