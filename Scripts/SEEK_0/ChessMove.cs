@@ -565,7 +565,6 @@ namespace GPTDeepResearch
 		#endregion
 
 		#region Private Helper Methods
-
 		private struct PGNComponents
 		{
 			public char pieceType;        // 'N', 'B', 'R', 'Q', 'K', or '\0' for pawn
@@ -577,7 +576,6 @@ namespace GPTDeepResearch
 			public bool isCheck;          // ends with '+'
 			public bool isCheckmate;      // ends with '#'
 		}
-
 		private static string CleanPGNMove(string move)
 		{
 			StringBuilder cleaned = new StringBuilder();
@@ -606,7 +604,6 @@ namespace GPTDeepResearch
 
 			return cleaned.ToString().Trim();
 		}
-
 		private static PGNComponents ParsePGNComponents(string move)
 		{
 			var components = new PGNComponents();
@@ -687,10 +684,6 @@ namespace GPTDeepResearch
 
 			return components;
 		}
-
-		//modify FindCandidateMoves method
-		// problem was: if (!components.isCapture && move.IsCapture() && movePieceType != 'P') continue;
-		/*
 		private static List<ChessMove> FindCandidateMoves(List<ChessMove> legalMoves, PGNComponents components)
 		{
 			var candidates = new List<ChessMove>();
@@ -720,51 +713,10 @@ namespace GPTDeepResearch
 						char.ToUpper(move.promotionPiece) != components.promotionPiece)
 						continue;
 				}
-
 				candidates.Add(move);
 			}
-
 			return candidates;
 		}
-		*/
-
-		private static List<ChessMove> FindCandidateMoves(List<ChessMove> legalMoves, PGNComponents components)
-		{
-			var candidates = new List<ChessMove>();
-			v2 targetCoord = ChessBoard.AlgebraicToCoord(components.targetSquare);
-
-			if (targetCoord.x < 0) return candidates;
-
-			foreach (var move in legalMoves)
-			{
-				// Check if target matches
-				if (move.to != targetCoord) continue;
-
-				// Check piece type
-				char movePieceType = char.ToUpper(move.piece);
-				char expectedType = components.pieceType == '\0' ? 'P' : components.pieceType;
-
-				if (movePieceType != expectedType) continue;
-
-				// Check capture requirement - FIXED: Only enforce capture restriction if explicitly marked
-				if (components.isCapture && !move.IsCapture()) continue;
-				// Remove the overly strict non-capture check for pieces other than pawns
-				// The original logic was rejecting valid quiet moves like Bc4
-
-				// Check promotion
-				if (components.promotionPiece != '\0')
-				{
-					if (move.moveType != MoveType.Promotion ||
-						char.ToUpper(move.promotionPiece) != components.promotionPiece)
-						continue;
-				}
-
-				candidates.Add(move);
-			}
-
-			return candidates;
-		}
-
 		private static ChessMove DisambiguateMove(List<ChessMove> candidates, PGNComponents components)
 		{
 			// Filter by file disambiguation
@@ -781,7 +733,6 @@ namespace GPTDeepResearch
 
 			return candidates.Count == 1 ? candidates[0] : Invalid();
 		}
-
 		private static ChessMove FindCastlingMove(ChessBoard board, List<ChessMove> legalMoves, bool kingside)
 		{
 			foreach (var move in legalMoves)
@@ -797,7 +748,6 @@ namespace GPTDeepResearch
 			}
 			return Invalid();
 		}
-
 		private static string ExtractAnnotation(string pgnMove)
 		{
 			StringBuilder annotation = new StringBuilder();
@@ -819,7 +769,6 @@ namespace GPTDeepResearch
 
 			return annotation.ToString();
 		}
-
 		private string GetDisambiguation(List<ChessMove> legalMoves)
 		{
 			// Find other moves to the same square with same piece
@@ -865,12 +814,10 @@ namespace GPTDeepResearch
 				return "" + (char)('1' + from.y);
 			}
 		}
-
 		private static bool IsValidPromotionCharacter(char c)
 		{
 			return "QRBNqrbn".Contains(c.ToString());
 		}
-
 		#endregion
 
 		#region Equality and Comparison
@@ -1086,46 +1033,87 @@ namespace GPTDeepResearch
 		/// <summary>
 		/// Test PGN parsing with comprehensive cases
 		/// </summary>
+		/// <summary>
+		/// Test PGN parsing with comprehensive cases
+		/// </summary>
 		private static void TestPGNParsing()
 		{
 			Debug.Log("<color=cyan>[ChessMove] Testing PGN parsing...</color>");
 
 			ChessBoard testBoard = new ChessBoard();
-			var legalMoves = testBoard.GetLegalMoves();
 
-			// Test basic pawn moves
-			string[] basicMoves = { "e4", "Nf3", "Bc4" };
+			// Test basic pawn moves - each on a fresh board state
+			string[] basicMoves = { "e4", "e5", "Nf3", "Nc6", "Bc4" };
 			int successCount = 0;
 
-			foreach (string moveStr in basicMoves)
+			// Test each move from appropriate board positions
+			for (int i = 0; i < basicMoves.Length; i++)
 			{
-				ChessMove move = FromPGN(moveStr, testBoard, legalMoves);
+				// Reset board for each test to ensure legal moves are available
+				testBoard = new ChessBoard();
+
+				// Make prerequisite moves to reach the position where this move is legal
+				if (i >= 1) // e5 needs e4 first
+				{
+					var e4 = FromPGN("e4", testBoard);
+					testBoard.MakeMove(e4);
+				}
+				if (i >= 2) // Nf3 needs e4 e5 first
+				{
+					var e5 = FromPGN("e5", testBoard);
+					testBoard.MakeMove(e5);
+				}
+				if (i >= 3) // Nc6 needs e4 e5 Nf3
+				{
+					var nf3 = FromPGN("Nf3", testBoard);
+					testBoard.MakeMove(nf3);
+				}
+				if (i >= 4) // Bc4 needs the previous moves
+				{
+					var nc6 = FromPGN("Nc6", testBoard);
+					testBoard.MakeMove(nc6);
+				}
+
+				var legalMoves = testBoard.GetLegalMoves();
+				ChessMove move = FromPGN(basicMoves[i], testBoard, legalMoves);
+
 				if (move.IsValid())
 				{
-					Debug.Log("<color=green>[ChessMove] ✓ PGN parsed: " + moveStr + " -> " + move.ToUCI() + "</color>");
+					Debug.Log("<color=green>[ChessMove] ✓ PGN parsed: " + basicMoves[i] + " -> " + move.ToUCI() + "</color>");
 					successCount++;
 				}
 				else
 				{
-
-					Debug.Log("<color=yellow>[ChessMove] ? PGN parse failed: " + moveStr + "</color>");
+					Debug.Log("<color=yellow>[ChessMove] ? PGN parse failed: " + basicMoves[i] + "</color>");
 				}
 			}
 
-			// Test castling
+			// Test castling on a fresh board with setup
+			testBoard = new ChessBoard();
+			// Set up a position where castling is legal
+			testBoard.LoadFromFEN("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1");
 			ChessMove castlingMove = FromPGN("O-O", testBoard);
 			if (castlingMove.IsValid() && castlingMove.moveType == MoveType.Castling)
 			{
 				Debug.Log("<color=green>[ChessMove] ✓ PGN castling works</color>");
 				successCount++;
 			}
+			else
+			{
+				Debug.Log("<color=yellow>[ChessMove] ? PGN castling failed</color>");
+			}
 
-			// Test annotations
+			// Test annotations on starting position
+			testBoard = new ChessBoard(); // Fresh starting position
 			ChessMove annotated = FromPGN("e4!", testBoard);
 			if (annotated.IsValid() && annotated.annotation == "!")
 			{
 				Debug.Log("<color=green>[ChessMove] ✓ PGN annotations preserved</color>");
 				successCount++;
+			}
+			else
+			{
+				Debug.Log("<color=yellow>[ChessMove] ? PGN annotations failed</color>");
 			}
 
 			Debug.Log("<color=cyan>[ChessMove] PGN parsing completed: " + successCount + " tests passed</color>");

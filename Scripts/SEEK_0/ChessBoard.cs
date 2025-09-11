@@ -34,6 +34,8 @@ namespace GPTDeepResearch
 	[System.Serializable]
 	public class ChessBoard : ICloneable
 	{
+		static bool LoggingEnabled = false;
+
 		[Header("Board State")]
 		public Board<char> board = new Board<char>(new v2(8, 8), '.');
 		public char sideToMove = 'w';
@@ -680,7 +682,7 @@ namespace GPTDeepResearch
 				{
 					// Update position cache
 					UpdatePositionCache();
-					Debug.Log($"<color=green>[ChessBoard] Made move: {sanNotation} ({gameTree.NodeCount} positions)</color>");
+					Debug.Log($"<color=green>[ChessBoard] Made move: {sanNotation} ({gameTree.NodeCount} gameTreeCount)</color>");
 				}
 				else
 				{
@@ -955,7 +957,8 @@ namespace GPTDeepResearch
 					return false;
 				}
 
-				Debug.Log($"<color=green>[ChessBoard] Loaded FEN: {fen}</color>");
+				if(LoggingEnabled == true)
+					Debug.Log($"<color=green>[ChessBoard] Loaded FEN: {fen}</color>");
 				return true;
 			}
 			catch (Exception e)

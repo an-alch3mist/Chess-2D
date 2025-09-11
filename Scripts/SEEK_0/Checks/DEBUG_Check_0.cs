@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 using SPACE_UTIL;
+using System.Linq;
 
 namespace GPTDeepResearch
 {
@@ -23,6 +24,7 @@ namespace GPTDeepResearch
 			Debug.Log("Started STIMULATE()");
 
 			// this.ChessBoard_Check();
+			// this.SimpleVerification_ChessMove_Check();
 			this.ChessMove_Check();
 
 			//
@@ -153,6 +155,24 @@ namespace GPTDeepResearch
 		}
 		// << Checked ChessBoard.cs
 
+
+		private void SimpleVerification_ChessMove_Check()
+		{
+			// After e4, Nf3 manually check the position
+			ChessBoard testBoard = new ChessBoard();
+			testBoard.MakeMove(ChessMove.FromUCI("e2e4", testBoard));
+			Debug.Log($"Position after e2e4: {testBoard.ToFEN()}");
+
+			testBoard.MakeMove(ChessMove.FromPGN("e5", testBoard)); // black turn
+			Debug.Log($"Position after e2e4: {testBoard.ToFEN()}");
+
+			testBoard.MakeMove(ChessMove.FromUCI("f1c4", testBoard));
+			Debug.Log($"Position after f1c4: {testBoard.ToFEN()}");
+
+			testBoard.MakeMove(ChessMove.FromPGN("Qh4", testBoard)); // black turn
+			Debug.Log($"Position after Qh4: {testBoard.ToFEN()}");
+			return;
+		}
 
 		private void ChessMove_Check()
 		{
