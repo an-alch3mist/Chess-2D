@@ -114,6 +114,24 @@ public class ExampleUsage : MonoBehaviour
         
         Debug.Log($"API Results: {uci}, {pgn}, Valid:{valid}, Capture:{capture}, Distance:{distance}, Summary:{summary}, NeedsPromo:{needsPromo}, Options:{options.Length}");
     }
+
+    private void SimpleVerification_ChessMove_Check()
+    {
+      // After e4, Nf3 manually check the position
+      ChessBoard testBoard = new ChessBoard();
+      testBoard.MakeMove(ChessMove.FromUCI("e2e4", testBoard));
+      Debug.Log($"Position after e2e4: {testBoard.ToFEN()}");
+
+      testBoard.MakeMove(ChessMove.FromPGN("e5", testBoard)); // black turn
+      Debug.Log($"Position after e7e5: {testBoard.ToFEN()}");
+
+      testBoard.MakeMove(ChessMove.FromUCI("f1c4", testBoard));
+      Debug.Log($"Position after f1c4: {testBoard.ToFEN()}");
+
+      testBoard.MakeMove(ChessMove.FromPGN("Qh4", testBoard)); // black turn
+      Debug.Log($"Position after Qh4: {testBoard.ToFEN()}");
+      return;
+    }
 }
 ```
 

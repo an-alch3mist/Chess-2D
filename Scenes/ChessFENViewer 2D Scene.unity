@@ -4831,7 +4831,7 @@ MonoBehaviour:
   m_CaretColor: {r: 0.19607843, g: 0.19607843, b: 0.19607843, a: 1}
   m_CustomCaretColor: 0
   m_SelectionColor: {r: 0.65882355, g: 0.80784315, b: 1, a: 0.7529412}
-  m_Text: rnbqkb1r/pppp1ppp/5n2/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4
+  m_Text: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 4 4
   m_CaretBlinkRate: 1.5
   m_CaretWidth: 5
   m_ReadOnly: 0
@@ -11603,7 +11603,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "rnbqkb1r/pppp1ppp/5n2/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4\u200B"
+  m_text: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 4 4\u200B"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 5bb4d5a9d466ba947a17579f29e0ccb4, type: 2}
   m_sharedMaterial: {fileID: 7919988175519046299, guid: 5bb4d5a9d466ba947a17579f29e0ccb4, type: 2}

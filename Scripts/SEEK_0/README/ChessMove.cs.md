@@ -183,87 +183,105 @@ public class ExampleUsage : MonoBehaviour
 {
     private void ChessMove_Check()
     {
-        // Initialize test board
-        ChessBoard board = new ChessBoard();
-        
-        // Create moves using different constructors
-        v2 from = new v2(4, 1); // e2
-        v2 to = new v2(4, 3);   // e4
-        ChessMove pawnMove = new ChessMove(from, to, 'P');
-        
-        // Expected output: "Move created: e2e4"
-        Debug.Log($"<color=green>Move created: {pawnMove.ToUCI()}</color>");
-        
-        // Parse UCI notation with caching
-        ChessMove parsed = ChessMove.FromUCI("e2e4", board);
-        if (parsed.IsValid())
-        {
-            // Expected output: "UCI parsed successfully: e2e4"
-            Debug.Log($"<color=green>UCI parsed successfully: {parsed.ToUCI()}</color>");
-        }
-        
-        // Parse PGN notation
-        ChessMove pgnMove = ChessMove.FromPGN("Nf3", board);
-        if (pgnMove.IsValid())
-        {
-            // Expected output: "PGN parsed: Nf3 -> g1f3"
-            Debug.Log($"<color=green>PGN parsed: Nf3 -> {pgnMove.ToUCI()}</color>");
-        }
-        
-        // Create promotion move
-        v2 promoFrom = new v2(4, 6); // e7
-        v2 promoTo = new v2(4, 7);   // e8
-        ChessMove promotion = ChessMove.CreatePromotionMove(promoFrom, promoTo, 'P', 'Q');
-        
-        // Expected output: "Promotion: e7e8q"
-        Debug.Log($"<color=green>Promotion: {promotion.ToUCI()}</color>");
-        
-        // Add analysis data
-        ChessMove analyzed = promotion.WithAnalysisData(1500f, 12, 0.25f);
-        ChessMove annotated = analyzed.WithAnnotation(ChessMove.Annotations.Good);
-        
-        // Expected output: "Analysis: Eval: +0.25, Depth: 12, Time: 1500ms"
-        Debug.Log($"<color=green>Analysis: {annotated.GetAnalysisSummary()}</color>");
-        
-        // Test move properties
-        bool isCapture = pawnMove.IsCapture();
-        bool isQuiet = pawnMove.IsQuiet();
-        int distance = pawnMove.GetDistance();
-        
-        // Expected output: "Move properties: Capture=False, Quiet=True, Distance=2"
-        Debug.Log($"<color=green>Move properties: Capture={isCapture}, Quiet={isQuiet}, Distance={distance}</color>");
-        
-        // Test promotion utilities
-        bool needsPromotion = ChessMove.RequiresPromotion(promoFrom, promoTo, 'P');
-        char[] options = ChessMove.GetPromotionOptions(true);
-        string pieceName = ChessMove.GetPromotionPieceName('Q');
-        
-        // Expected output: "Promotion check: Needs=True, Options=4, Queen name=Queen"
-        Debug.Log($"<color=green>Promotion check: Needs={needsPromotion}, Options={options.Length}, Queen name={pieceName}</color>");
-        
-        // Test equality
-        ChessMove move1 = new ChessMove(from, to, 'P');
-        ChessMove move2 = new ChessMove(from, to, 'P');
-        bool areEqual = move1.Equals(move2);
-        
-        // Expected output: "Equality test: True"
-        Debug.Log($"<color=green>Equality test: {areEqual}</color>");
-        
-        // Create castling move
-        v2 kingFrom = new v2(4, 0);
-        v2 kingTo = new v2(6, 0);
-        v2 rookFrom = new v2(7, 0);
-        v2 rookTo = new v2(5, 0);
-        ChessMove castling = new ChessMove(kingFrom, kingTo, rookFrom, rookTo, 'K');
-        
-        // Expected output: "Castling move: e1g1"
-        Debug.Log($"<color=green>Castling move: {castling.ToUCI()}</color>");
-        
-        // Run comprehensive tests
-        ChessMove.RunAllTests();
-        
-        // Expected output: "ChessMove example completed successfully"
-        Debug.Log("<color=cyan>ChessMove example completed successfully</color>");
+      // Initialize test board
+      ChessBoard board = new ChessBoard();
+
+      // Create moves using different constructors
+      v2 from = new v2(4, 1); // e2
+      v2 to = new v2(4, 3);   // e4
+      ChessMove pawnMove = new ChessMove(from, to, 'P');
+
+      // Expected output: "Move created: e2e4"
+      Debug.Log($"<color=white>Move created: {pawnMove.ToUCI()}</color>");
+
+      // Parse UCI notation with caching
+      ChessMove parsed = ChessMove.FromUCI("e2e4", board);
+      if (parsed.IsValid())
+      {
+        // Expected output: "UCI parsed successfully: e2e4"
+        Debug.Log($"<color=white>UCI parsed successfully: {parsed.ToString()}, {parsed.ToUCI()}</color>");
+      }
+
+      // Parse PGN notation
+      ChessMove pgnMove = ChessMove.FromPGN("Nf3", board);
+      if (pgnMove.IsValid())
+      {
+        // Expected output: "PGN parsed: Nf3 -> g1f3"
+        Debug.Log($"<color=white>PGN parsed: Nf3 -> {pgnMove.ToUCI()}</color>");
+      }
+
+      // Create promotion move
+      v2 promoFrom = new v2(4, 6); // e7
+      v2 promoTo = new v2(4, 7);   // e8
+      ChessMove promotion = ChessMove.CreatePromotionMove(promoFrom, promoTo, 'P', 'N');
+
+      // Expected output: "Promotion: e7e8q"
+      Debug.Log($"<color=white>Promotion: {promotion.ToUCI()}</color>");
+
+      // Add analysis data
+      ChessMove analyzed = promotion.WithAnalysisData(1500f, 12, 0.25f);
+      ChessMove annotated = analyzed.WithAnnotation(ChessMove.Annotations.Good);
+
+      // Expected output: "Analysis: Eval: +0.25, Depth: 12, Time: 1500ms"
+      Debug.Log($"<color=white>Analysis: {annotated.GetAnalysisSummary()}</color>");
+
+      // Test move properties
+      bool isCapture = pawnMove.IsCapture();
+      bool isQuiet = pawnMove.IsQuiet();
+      int distance = pawnMove.GetDistance();
+
+      // Expected output: "Move properties: Capture=False, Quiet=True, Distance=2"
+      Debug.Log($"<color=white>Move properties: Capture={isCapture}, Quiet={isQuiet}, Distance={distance}</color>");
+
+      // Test promotion utilities
+      bool needsPromotion = ChessMove.RequiresPromotion(promoFrom, promoTo, 'P');
+      char[] options = ChessMove.GetPromotionOptions(true);
+      string pieceName = ChessMove.GetPromotionPieceName('R');
+
+      // Expected output: "Promotion check: Needs=True, Options=4, Queen name=Queen"
+      Debug.Log($"<color=white>Promotion check: Needs={needsPromotion}, Options={options.Length}, Queen name={pieceName}</color>");
+
+      // Test equality
+      ChessMove move1 = new ChessMove(from, to, 'P');
+      ChessMove move2 = new ChessMove(from, to, 'P');
+      bool areEqual = move1.Equals(move2);
+
+      // Expected output: "Equality test: True"
+      Debug.Log($"<color=white>Equality test: {areEqual}</color>");
+
+      // Create castling move
+      v2 kingFrom = new v2(4, 0);
+      v2 kingTo = new v2(6, 0);
+      v2 rookFrom = new v2(7, 0);
+      v2 rookTo = new v2(5, 0);
+      ChessMove castling = new ChessMove(kingFrom, kingTo, rookFrom, rookTo, 'K');
+
+      // Expected output: "Castling move: e1g1"
+      Debug.Log($"<color=white>Castling move: {castling.ToUCI()}</color>");
+
+      // Run comprehensive tests
+      ChessMove.RunAllTests();
+
+      // Expected output: "ChessMove example completed successfully"
+      Debug.Log("<color=cyan>ChessMove example completed successfully</color>");
+    }
+
+    private void SimpleVerification_ChessMove_Check()
+    {
+      // After e4, Nf3 manually check the position
+      ChessBoard testBoard = new ChessBoard();
+      testBoard.MakeMove(ChessMove.FromUCI("e2e4", testBoard));
+      Debug.Log($"Position after e2e4: {testBoard.ToFEN()}");
+
+      testBoard.MakeMove(ChessMove.FromPGN("e5", testBoard)); // black turn
+      Debug.Log($"Position after e2e4: {testBoard.ToFEN()}");
+
+      testBoard.MakeMove(ChessMove.FromUCI("f1c4", testBoard));
+      Debug.Log($"Position after f1c4: {testBoard.ToFEN()}");
+
+      testBoard.MakeMove(ChessMove.FromPGN("Qh4", testBoard)); // black turn
+      Debug.Log($"Position after Qh4: {testBoard.ToFEN()}");
+      return;
     }
 }
 ```

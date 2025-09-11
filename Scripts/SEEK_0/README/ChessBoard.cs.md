@@ -302,125 +302,125 @@ This file implements a feature-rich chess board system designed for chess engine
 
 public class ExampleUsage : MonoBehaviour 
 {
-    private void ChessBoard_Check()
+private void ChessBoard_Check()
     {
-        // Initialize board with starting position
-        var chessBoard = new ChessBoard();
-        Debug.Log($"<color=green>Created board: {chessBoard.ToFEN()}</color>");
-        
-        // Load position from FEN
-        var customBoard = new ChessBoard("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4");
-        Debug.Log($"<color=green>Loaded custom position: {customBoard.ToFEN()}</color>");
-        
-        // Make moves with validation
-        var e4Move = ChessMove.FromUCI("e2e4", chessBoard);
-        bool moveSuccess = chessBoard.MakeMove(e4Move);
-        Debug.Log($"<color=green>Move e2-e4 success: {moveSuccess}</color>");
-        // Expected output: "Move e2-e4 success: True"
-        
-        // Get legal moves
-        var legalMoves = chessBoard.GetLegalMoves();
-        Debug.Log($"<color=green>Legal moves available: {legalMoves.Count}</color>");
-        // Expected output: "Legal moves available: 20"
-        
-        // Update evaluation from engine
-        chessBoard.UpdateEvaluation(15.0f, 0.52f, 0f, 12);
-        Debug.Log($"<color=green>Evaluation: {chessBoard.LastEvaluation:F1}cp, WinProb: {chessBoard.LastWinProbability:F2}</color>");
-        // Expected output: "Evaluation: 15.0cp, WinProb: 0.52"
-        
-        // Test undo/redo functionality
-        if (chessBoard.CanUndo())
+      // Initialize board with starting position
+      var chessBoard = new ChessBoard();
+      Debug.Log($"<color=white>Created board: {chessBoard.ToFEN()}</color>");
+
+      // Load position from FEN
+      var customBoard = new ChessBoard("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4");
+      Debug.Log($"<color=white>Loaded custom position: {customBoard.ToFEN()}</color>");
+
+      // Make moves with validation
+      var e4Move = ChessMove.FromUCI("e2e4", chessBoard);
+      bool moveSuccess = chessBoard.MakeMove(e4Move);
+      Debug.Log($"<color=white>Move e2-e4 success: {moveSuccess}</color>");
+      // Expected output: "Move e2-e4 success: True"
+
+      // Get legal moves
+      var legalMoves = chessBoard.GetLegalMoves();
+      Debug.Log($"<color=white>Legal moves available: {legalMoves.Count}</color>");
+      // Expected output: "Legal moves available: 20"
+
+      // Update evaluation from engine
+      chessBoard.UpdateEvaluation(15.0f, 0.52f, 0f, 12);
+      Debug.Log($"<color=white>Evaluation: {chessBoard.LastEvaluation:F1}cp, WinProb: {chessBoard.LastWinProbability:F2}</color>");
+      // Expected output: "Evaluation: 15.0cp, WinProb: 0.52"
+
+      // Test undo/redo functionality
+      if (chessBoard.CanUndo())
+      {
+        bool undoSuccess = chessBoard.UndoMove();
+        Debug.Log($"<color=white>Undo success: {undoSuccess}</color>");
+        // Expected output: "Undo success: True"
+
+        if (chessBoard.CanRedo())
         {
-            bool undoSuccess = chessBoard.UndoMove();
-            Debug.Log($"<color=green>Undo success: {undoSuccess}</color>");
-            // Expected output: "Undo success: True"
-            
-            if (chessBoard.CanRedo())
-            {
-                bool redoSuccess = chessBoard.RedoMove();
-                Debug.Log($"<color=green>Redo success: {redoSuccess}</color>");
-                // Expected output: "Redo success: True"
-            }
+          bool redoSuccess = chessBoard.RedoMove();
+          Debug.Log($"<color=white>Redo success: {redoSuccess}</color>");
+          // Expected output: "Redo success: True"
         }
-        
-        // Position hashing and caching
-        ulong posHash = chessBoard.CalculatePositionHash();
-        Debug.Log($"<color=green>Position hash: {posHash:X}</color>");
-        // Expected output: "Position hash: A1B2C3D4E5F6G7H8" (example hex)
-        
-        var cachedInfo = chessBoard.GetCachedPositionInfo();
-        if (cachedInfo.HasValue)
-        {
-            Debug.Log($"<color=green>Cached evaluation: {cachedInfo.Value.evaluation:F1}</color>");
-            // Expected output: "Cached evaluation: 15.0"
-        }
-        
-        // Side management
-        chessBoard.SetHumanSide('b');
-        Debug.Log($"<color=green>Human side: {chessBoard.GetSideName(chessBoard.humanSide)}</color>");
-        // Expected output: "Human side: Black"
-        
-        bool isHumanTurn = chessBoard.IsHumanTurn();
-        bool isEngineTurn = chessBoard.IsEngineTurn();
-        Debug.Log($"<color=green>Human turn: {isHumanTurn}, Engine turn: {isEngineTurn}</color>");
-        // Expected output: "Human turn: False, Engine turn: True"
-        
-        // Piece access
-        char piece = chessBoard.GetPiece("e4");
-        Debug.Log($"<color=green>Piece at e4: {piece}</color>");
-        // Expected output: "Piece at e4: P"
-        
-        // Algebraic notation conversion
-        v2 coord = ChessBoard.AlgebraicToCoord("e4");
-        string square = ChessBoard.CoordToAlgebraic(coord);
-        Debug.Log($"<color=green>e4 coordinate: {coord}, back to algebraic: {square}</color>");
-        // Expected output: "e4 coordinate: (4, 3), back to algebraic: e4"
-        
-        // Game result evaluation
-        var gameResult = chessBoard.GetGameResult();
-        Debug.Log($"<color=green>Game result: {gameResult}</color>");
-        // Expected output: "Game result: InProgress"
-        
-        // Board cloning
-        var clonedBoard = chessBoard.Clone();
-        Debug.Log($"<color=green>Cloned board FEN: {clonedBoard.ToFEN()}</color>");
-        // Expected output: "Cloned board FEN: rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"
-        
-        // Test threefold repetition
-        var repBoard = new ChessBoard();
-        var moves = new string[] { "g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8" };
-        foreach (string uciMove in moves)
-        {
-            var move = ChessMove.FromUCI(uciMove, repBoard);
-            repBoard.MakeMove(move);
-        }
-        bool isRepetition = repBoard.IsThreefoldRepetition();
-        Debug.Log($"<color=green>Threefold repetition detected: {isRepetition}</color>");
-        // Expected output: "Threefold repetition detected: True"
-        
-        // Chess960 variant
-        var chess960Board = new ChessBoard("", ChessBoard.ChessVariant.Chess960);
-        Debug.Log($"<color=green>Chess960 starting position: {chess960Board.ToFEN()}</color>");
-        // Expected output: "Chess960 starting position: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" (or shuffled)
-        
-        // Nested type usage - PositionInfo
-        var posInfo = new ChessBoard.PositionInfo(posHash, 25.5f, 0.6f, 15);
-        bool isValidCache = posInfo.IsValid();
-        Debug.Log($"<color=green>Position cache valid: {isValidCache}</color>");
-        // Expected output: "Position cache valid: True"
-        
-        // Nested type usage - PGNMetadata
-        var pgnMeta = new ChessBoard.PGNMetadata();
-        pgnMeta.Event = "Test Game";
-        pgnMeta.White = "Player1";
-        pgnMeta.Black = "Player2";
-        Debug.Log($"<color=green>PGN metadata: {pgnMeta.ToString()}</color>");
-        // Expected output: "PGN metadata: PGN[Test Game at Unity Chess, 2024.01.15] Player1 vs Player2: *"
-        
-        // Run comprehensive tests
-        ChessBoard.RunAllTests();
-        Debug.Log("<color=green>ChessBoard test suite completed</color>");
-        // Expected output: Multiple test result lines with color-coded pass/fail status
+      }
+
+      // Position hashing and caching
+      ulong posHash = chessBoard.CalculatePositionHash();
+      Debug.Log($"<color=white>Position hash: {posHash:X}</color>");
+      // Expected output: "Position hash: A1B2C3D4E5F6G7H8" (example hex)
+
+      var cachedInfo = chessBoard.GetCachedPositionInfo();
+      if (cachedInfo.HasValue)
+      {
+        Debug.Log($"<color=white>Cached evaluation: {cachedInfo.Value.evaluation:F1}</color>");
+        // Expected output: "Cached evaluation: 15.0"
+      }
+
+      // Side management
+      chessBoard.SetHumanSide('b');
+      Debug.Log($"<color=white>Human side: {chessBoard.GetSideName(chessBoard.humanSide)}</color>");
+      // Expected output: "Human side: Black"
+
+      bool isHumanTurn = chessBoard.IsHumanTurn();
+      bool isEngineTurn = chessBoard.IsEngineTurn();
+      Debug.Log($"<color=white>Human turn: {isHumanTurn}, Engine turn: {isEngineTurn}</color>");
+      // Expected output: "Human turn: False, Engine turn: True"
+
+      // Piece access
+      char piece = chessBoard.GetPiece("e4");
+      Debug.Log($"<color=white>Piece at e4: {piece}</color>");
+      // Expected output: "Piece at e4: P"
+
+      // Algebraic notation conversion
+      v2 coord = ChessBoard.AlgebraicToCoord("e4");
+      string square = ChessBoard.CoordToAlgebraic(coord);
+      Debug.Log($"<color=white>e4 coordinate: {coord}, back to algebraic: {square}</color>");
+      // Expected output: "e4 coordinate: (4, 3), back to algebraic: e4"
+
+      // Game result evaluation
+      var gameResult = chessBoard.GetGameResult();
+      Debug.Log($"<color=white>Game result: {gameResult}</color>");
+      // Expected output: "Game result: InProgress"
+
+      // Board cloning
+      var clonedBoard = chessBoard.Clone();
+      Debug.Log($"<color=white>Cloned board FEN: {clonedBoard.ToFEN()}</color>");
+      // Expected output: "Cloned board FEN: rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"
+
+      // Test threefold repetition
+      var repBoard = new ChessBoard();
+      var moves = new string[] { "g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8" };
+      foreach (string uciMove in moves)
+      {
+        var move = ChessMove.FromUCI(uciMove, repBoard);
+        repBoard.MakeMove(move);
+      }
+      bool isRepetition = repBoard.IsThreefoldRepetition();
+      Debug.Log($"<color=white>Threefold repetition detected: {isRepetition}</color>");
+      // Expected output: "Threefold repetition detected: True"
+
+      // Chess960 variant
+      var chess960Board = new ChessBoard("", ChessBoard.ChessVariant.Chess960);
+      Debug.Log($"<color=white>Chess960 starting position: {chess960Board.ToFEN()}</color>");
+      // Expected output: "Chess960 starting position: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" (or shuffled)
+
+      // Nested type usage - PositionInfo
+      var posInfo = new ChessBoard.PositionInfo(posHash, 25.5f, 0.6f, 15);
+      bool isValidCache = posInfo.IsValid();
+      Debug.Log($"<color=white>Position cache valid: {isValidCache}</color>");
+      // Expected output: "Position cache valid: True"
+
+      // Nested type usage - PGNMetadata
+      var pgnMeta = new ChessBoard.PGNMetadata();
+      pgnMeta.Event = "Test Game";
+      pgnMeta.White = "Player1";
+      pgnMeta.Black = "Player2";
+      Debug.Log($"<color=white>PGN metadata: {pgnMeta.ToString()}</color>");
+      // Expected output: "PGN metadata: PGN[Test Game at Unity Chess, 2024.01.15] Player1 vs Player2: *"
+
+      // Run comprehensive tests
+      ChessBoard.RunAllTests();
+      Debug.Log("<color=white>ChessBoard test suite completed</color>");
+      // Expected output: Multiple test result lines with color-coded pass/fail status
     }
 }
 ```
