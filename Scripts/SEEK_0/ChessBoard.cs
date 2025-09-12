@@ -72,6 +72,7 @@ namespace GPTDeepResearch
 		public float LastWinProbability { get; private set; }
 		public float LastMateDistance { get; private set; }
 		public int LastEvaluationDepth { get; private set; }
+		public List<GameNode> LogGameTreeNodes { get { return gameTree.GetNodes; } } // just to log
 		public int GameTreeNodeCount => gameTree.NodeCount;
 		public int CurrentHistoryIndex => gameTree.CurrentNodeIndex;
 
@@ -166,6 +167,7 @@ namespace GPTDeepResearch
 			[SerializeField] private int currentNodeIndex = -1;
 			[SerializeField] private Dictionary<ulong, int> positionToNodeMap = new Dictionary<ulong, int>();
 
+			public List<GameNode> GetNodes { get { return this.nodes; } } // just to log
 			public int CurrentNodeIndex => currentNodeIndex;
 			public int NodeCount => nodes.Count;
 			public GameNode CurrentNode => currentNodeIndex >= 0 && currentNodeIndex < nodes.Count ? nodes[currentNodeIndex] : null;

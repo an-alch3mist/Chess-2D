@@ -809,7 +809,7 @@ namespace GPTDeepResearch
 			}
 
 			// Move that would leave king in check
-			ChessBoard pinnedBoard = new ChessBoard("8/8/8/8/8/2r5/2P5/2K5 w - - 0 1");
+			ChessBoard pinnedBoard = new ChessBoard("k7/8/8/8/8/2r5/2P5/2K5 w - - 0 1");
 			ChessMove pinnedMove = ChessMove.FromUCI("c2c3", pinnedBoard);
 			if (!IsLegalMove(pinnedBoard, pinnedMove))
 			{
@@ -839,7 +839,7 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[MoveGenerator] Testing IsSquareAttacked...</color>");
 
 			// Queen attacking a square
-			ChessBoard board = new ChessBoard("8/8/8/8/8/8/Q7/8 w - - 0 1");
+			ChessBoard board = new ChessBoard("kK6/8/8/8/8/8/Q7/8 w - - 0 1");
 			if (IsSquareAttacked(board, new v2(7, 7), 'w'))
 			{
 				Debug.Log("<color=green>[MoveGenerator] ✓ Queen attack detected</color>");

@@ -25,8 +25,9 @@ namespace GPTDeepResearch
 
 			// this.ChessBoard_Check();
 			// this.SimpleVerification_ChessMove_Check();
-			this.ChessMove_Check();
+			// this.ChessMove_Check();
 
+			this.MoveGenerator_Check();
 			//
 			yield return null;
 
@@ -155,7 +156,7 @@ namespace GPTDeepResearch
 		}
 		// << Checked ChessBoard.cs
 
-
+		// CHecked ChessMove.cs >>
 		private void SimpleVerification_ChessMove_Check()
 		{
 			// After e4, Nf3 manually check the position
@@ -173,7 +174,6 @@ namespace GPTDeepResearch
 			Debug.Log($"Position after Qh4: {testBoard.ToFEN()}");
 			return;
 		}
-
 		private void ChessMove_Check()
 		{
 			// Initialize test board
@@ -257,6 +257,78 @@ namespace GPTDeepResearch
 
 			// Expected output: "ChessMove example completed successfully"
 			Debug.Log("<color=cyan>ChessMove example completed successfully</color>");
+		}
+		// << Checked ChessMove.cs
+
+
+
+		private void MoveGenerator_Check()
+		{
+			// Initialize starting position
+			ChessBoard board = new ChessBoard();
+
+			// Generate all legal moves
+			List<ChessMove> moves = MoveGenerator.GenerateLegalMoves(board);
+
+			LOG.SaveLog(moves.ToTable(name: "LIST<moves>", toString: true));
+			// Expected output: "Generated 20 legal moves from starting position"
+			Debug.Log($"<color=white>Generated {moves.Count} legal moves from starting position</color>");
+
+
+			// Check specific move legality
+			ChessMove testMove = ChessMove.FromUCI("e2e4", board);
+			bool isLegal = MoveGenerator.IsLegalMove(board, testMove);
+			// Expected output: "Move e2-e4 is legal: True"
+			Debug.Log($"<color=white>Move e2-e4 is legal: {isLegal}</color>");
+
+			board.MakeMove(testMove);
+			board.MakeMove(ChessMove.FromPGN("d5", board));		// black turn
+			board.MakeMove(ChessMove.FromUCI("e4d5", board));
+			board.MakeMove(ChessMove.FromPGN("Qxd5", board));	// black turn
+			board.MakeMove(ChessMove.FromPGN("a3", board));
+			board.MakeMove(ChessMove.FromPGN("Qe5", board));	// black turn
+			// board.MakeMove(ChessMove.FromPGN("Qe2", board));
+			Debug.Log(board.ToFEN());
+
+			// Test square attack detection
+			v2 kingSquare = new v2(4, 0); // e1
+			bool kingAttacked = MoveGenerator.IsSquareAttacked(board, kingSquare, 'b');
+
+			// Expected output: "King square e1 under attack: False"
+			Debug.Log($"<color=white>King square e1 under attack: {kingAttacked}</color>");
+
+			// Test promotion scenario
+			ChessBoard promoBoard = new ChessBoard("8/P7/8/8/8/8/8/k6K w - - 0 1");
+			List<ChessMove> promoMoves = MoveGenerator.GenerateLegalMoves(promoBoard);
+			// LOG.SaveLog(promoMoves.ToTable(name: "LIST<promoMoves>"));
+			int promotionCount = promoMoves.Count(m => m.moveType == ChessMove.MoveType.Promotion);
+
+			// Expected output: "Promotion moves available: 4"
+			Debug.Log($"<color=white>Promotion moves available: {promotionCount}</color>");
+
+			// Test castling availability
+			ChessBoard castleBoard = new ChessBoard("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+			List<ChessMove> castleMoves = MoveGenerator.GenerateLegalMoves(castleBoard);
+			// LOG.SaveLog(castleMoves.ToTable(name: "LIST<castleMoves>"));
+			int castlingCount = castleMoves.Count(m => m.moveType == ChessMove.MoveType.Castling);
+
+			// Expected output: "Castling moves available: 2"
+			Debug.Log($"<color=white>Castling moves available: {castlingCount}</color>");
+
+			// Test en passant
+			ChessBoard epBoard = new ChessBoard("8/8/8/pP6/8/8/8/k6K w - a6 0 1");
+			List<ChessMove> epMoves = MoveGenerator.GenerateLegalMoves(epBoard);
+			LOG.SaveLog(epMoves.ToTable(name: "LIST<enPassantMoves>"));
+			int enPassantCount = epMoves.Count(m => m.moveType == ChessMove.MoveType.EnPassant);
+
+			// Expected output: "En passant moves available: 1"
+			Debug.Log($"<color=white>En passant moves available: {enPassantCount}</color>");
+			// Expected output: Various colored test results showing pass/fail status
+			Debug.Log("<color=white>==== Move generation testing completed ====</color>");
+
+			// Run comprehensive tests
+			Debug.Log("MoveGenerator.RunAllTests() for MoveGenerator static class");
+			// MoveGenerator.RunAllTests();
 		}
 	}
 }
