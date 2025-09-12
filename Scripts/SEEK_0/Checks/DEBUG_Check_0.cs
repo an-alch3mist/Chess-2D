@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -27,8 +27,9 @@ namespace GPTDeepResearch
 			// this.SimpleVerification_ChessMove_Check();
 			// this.ChessMove_Check();
 			// this.MoveGenerator_Check();
+			// this.ChessRules_Check();
 
-			this.ChessRules_Check();
+			yield return PromotionUI_Check();
 			//
 			yield return null;
 
@@ -332,6 +333,7 @@ namespace GPTDeepResearch
 		}
 		// << Checked MoveGenerator
 
+		// Checked ChessRules, when Three folds check, is'nt working
 		private void ChessRules_Check()
 		{
 			// Create test board
@@ -408,6 +410,63 @@ namespace GPTDeepResearch
 			// Run comprehensive tests
 			ChessRules.RunAllTests();
 			// Expected output: Multiple test results with colored pass/fail indicators
+		}
+		// << Checked ChessRules
+
+
+
+		[SerializeField] private PromotionUI promotionUI; // Assign in Inspector
+		private IEnumerator PromotionUI_Check()
+		{
+			// Subscribe to promotion events
+			promotionUI.OnPromotionSelected += OnPieceSelected;
+			promotionUI.OnPromotionCancelled += OnPromotionCancelled;
+
+			// Show promotion dialog for white player
+			promotionUI.ShowPromotionDialog(true, "e7", "e8");
+			// Expected output: "[PromotionUI] Showing promotion dialog for White"
+			Debug.Log("<color=cyan>Promotion dialog shown for white</color>");
+
+			// Check if waiting for selection
+			bool isWaiting = promotionUI.IsWaitingForPromotion();
+			// Expected output: "Currently waiting: True"
+			Debug.Log($"<color=green>Currently waiting: {isWaiting}</color>");
+
+			// Wait for user selection or timeout
+			yield return new WaitForSeconds(1.0f);
+
+			// Force default selection programmatically
+			if (promotionUI.IsWaitingForPromotion())
+			{
+				promotionUI.SelectDefaultPromotion();
+				// Expected output: "[PromotionUI] Selected promotion: Queen"
+				Debug.Log("<color=green>Default promotion selected</color>");
+			}
+
+			// Create promotion selection data
+			var selectionData = new PromotionSelectionData('Q', true, "e7", "e8");
+			// Expected output: "White promotes to Queen"
+			Debug.Log($"<color=green>Selection: {selectionData.ToString()}</color>");
+
+			// Test the component
+			promotionUI.RunAllTests();
+			// Expected output: "[PromotionUI] ✓ All tests completed successfully"
+
+			// Show current state
+			// Expected output: "PromotionUI[Waiting:False, Side:White, Selected:Q, Default:Q, Timeout:3s]"
+			Debug.Log($"<color=cyan>State: {promotionUI.ToString()}</color>");
+
+			yield break;
+		}
+		private void OnPieceSelected(char piece)
+		{
+			// Expected output: "Player selected: Q"
+			Debug.Log($"<color=green>Player selected: {piece}</color>");
+		}
+		private void OnPromotionCancelled()
+		{
+			// Expected output: "Promotion was cancelled"
+			Debug.Log("<color=yellow>Promotion was cancelled</color>");
 		}
 	}
 }

@@ -277,7 +277,7 @@ namespace GPTDeepResearch
 			Debug.Log($"<color=green>[PromotionUI] Selected promotion: {ChessMove.GetPromotionPieceName(selectedPiece)}</color>");
 
 			// Hide dialog after short delay for visual feedback
-			StartCoroutine(DelayedHide(0.2f));
+			StartCoroutine(DelayedHide(this.timeoutSeconds));
 		}
 
 		private void HighlightSelectedButton(char piece)
@@ -315,8 +315,10 @@ namespace GPTDeepResearch
 
 		private IEnumerator TimeoutCountdown()
 		{
+			Debug.Log("time out count down");
 			float remainingTime = timeoutSeconds;
 
+			isWaitingForSelection = true;
 			while (remainingTime > 0 && isWaitingForSelection)
 			{
 				if (showTimeoutCountdown && timeoutText != null)
@@ -327,6 +329,7 @@ namespace GPTDeepResearch
 				yield return new WaitForSeconds(0.1f);
 				remainingTime -= 0.1f;
 			}
+			Debug.Log("remainingTime: " + remainingTime);
 
 			// Timeout reached - select default
 			if (isWaitingForSelection)
