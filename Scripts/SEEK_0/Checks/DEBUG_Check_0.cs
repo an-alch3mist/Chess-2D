@@ -26,8 +26,9 @@ namespace GPTDeepResearch
 			// this.ChessBoard_Check();
 			// this.SimpleVerification_ChessMove_Check();
 			// this.ChessMove_Check();
+			// this.MoveGenerator_Check();
 
-			this.MoveGenerator_Check();
+			this.ChessRules_Check();
 			//
 			yield return null;
 
@@ -260,8 +261,7 @@ namespace GPTDeepResearch
 		}
 		// << Checked ChessMove.cs
 
-
-
+		// Checked MoveGenerator, when num of king on w, h side != 1 -> TODO
 		private void MoveGenerator_Check()
 		{
 			// Initialize starting position
@@ -328,7 +328,86 @@ namespace GPTDeepResearch
 
 			// Run comprehensive tests
 			Debug.Log("MoveGenerator.RunAllTests() for MoveGenerator static class");
-			// MoveGenerator.RunAllTests();
+			MoveGenerator.RunAllTests();
+		}
+		// << Checked MoveGenerator
+
+		private void ChessRules_Check()
+		{
+			// Create test board
+			ChessBoard board = new ChessBoard();
+			Debug.Log(board.ToFEN());
+			// Test position evaluation
+			ChessRules.GameResult result = ChessRules.EvaluatePosition(board);
+			Debug.Log($"<color=white>Game state: {result}</color>");
+			// Expected output: "Game state: InProgress"
+
+			// Test check detection
+			bool whiteInCheck = ChessRules.IsInCheck(board, 'w');
+			bool blackInCheck = ChessRules.IsInCheck(board, 'b');
+			Debug.Log($"<color=white>White in check: {whiteInCheck}, Black in check: {blackInCheck}</color>");
+			// Expected output: "White in check: False, Black in check: False"
+
+			// Test move validation
+			ChessMove pawnMove = ChessMove.FromUCI("e2e4", board);
+			bool isValid = ChessRules.ValidateMove(board, pawnMove);
+			Debug.Log($"<color=white>Move e2e4 valid: {isValid}</color>");
+			// Expected output: "Move e2e4 valid: True"
+
+			// Test promotion requirement
+			ChessBoard promotionBoard = new ChessBoard("8/P7/8/8/8/8/8/K6k w - - 0 1");
+			ChessMove promotionMove = ChessMove.FromUCI("a7a8q", promotionBoard);
+			bool needsPromotion = ChessRules.RequiresPromotion(promotionBoard, promotionMove);
+			Debug.Log($"<color=white>Needs promotion: {needsPromotion}</color>");
+			// Expected output: "Needs promotion: True"
+
+			// Test move application
+			ChessBoard testBoard = board.Clone();
+			bool moveApplied = ChessRules.MakeMove(testBoard, pawnMove);
+			Debug.Log($"<color=white>Move applied: {moveApplied}</color>");
+			// Expected output: "Move applied: True"
+
+			// Test evaluation info
+			ChessRules.EvaluationInfo evalInfo = ChessRules.GetEvaluationInfo(
+				board: board, 
+				centipawns: 25.5f, 
+				winProbability: 0.6f, 
+				mateDistance: 0f);
+			string displayText = evalInfo.GetDisplayText();
+			Debug.Log($"<color=white>Evaluation: {displayText}</color>");
+			// Expected output: "Evaluation: +25.50"
+
+			// Test position validation
+			bool positionValid = ChessRules.ValidatePosition(board);
+			Debug.Log($"<color=white>Position valid: {positionValid}</color>");
+			// Expected output: "Position valid: True"
+
+			// Test king finding
+			v2 whiteKing = ChessRules.FindKing(board, 'K');
+			v2 blackKing = ChessRules.FindKing(board, 'k');
+			Debug.Log($"<color=white>White king at: {whiteKing}, Black king at: {blackKing}</color>");
+			// Expected output: "White king at: (4, 0), Black king at: (4, 7)"
+
+			// Test attacking pieces
+			List<v2> attackers = ChessRules.GetAttackingPieces(board, new v2(4, 4), 'w');
+			Debug.Log($"<color=white>White pieces attacking e4: {attackers.Count}</color>");
+			// Expected output: "White pieces attacking e4: 0"
+
+			// Test stalemate detection
+			ChessBoard stalemateBoard = new ChessBoard("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1");
+			ChessRules.GameResult stalemateResult = ChessRules.EvaluatePosition(stalemateBoard);
+			Debug.Log($"<color=white>Stalemate result: {stalemateResult}</color>");
+			// Expected output: "Stalemate result: Stalemate"
+
+			// Test insufficient material
+			ChessBoard insufficientBoard = new ChessBoard("8/8/8/8/8/8/8/K6k w - - 0 1");
+			ChessRules.GameResult insufficientResult = ChessRules.EvaluatePosition(insufficientBoard);
+			Debug.Log($"<color=white>Insufficient material result: {insufficientResult}</color>");
+			// Expected output: "Insufficient material result: InsufficientMaterial"
+
+			// Run comprehensive tests
+			ChessRules.RunAllTests();
+			// Expected output: Multiple test results with colored pass/fail indicators
 		}
 	}
 }

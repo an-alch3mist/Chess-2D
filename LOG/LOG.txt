@@ -134,3 +134,411 @@ LIST<enPassantMoves>:
 (1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
 
 
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+
+ LIST<moves> Count: 20 
+-----------------------
+ b1c3                  
+ b1a3                  
+ g1h3                  
+ g1f3                  
+ a2a3                  
+ a2a4                  
+ b2b3                  
+ b2b4                  
+ c2c3                  
+ c2c4                  
+ d2d3                  
+ d2d4                  
+ e2e3                  
+ e2e4                  
+ f2f3                  
+ f2f4                  
+ g2g3                  
+ g2g4                  
+ h2h3                  
+ h2h4                  
+
+
+LIST<enPassantMoves>:
+~from    | ~to      | ~piece   | ~capturedPiece   | ~moveType   | ~promotionPiece   | ~rookFrom   | ~rookTo    | pri~<analysisTime>k__BackingField   | pri~<annotation>k__BackingField   | pri~<engineDepth>k__BackingField   | pri~<engineEval>k__BackingField  
+---------+----------+----------+------------------+-------------+-------------------+-------------+------------+-------------------------------------+-----------------------------------+------------------------------------+----------------------------------
+(7, 0)   | (6, 0)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (7, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(7, 0)   | (6, 1)   | K        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (1, 5)   | P        | (ascii:0-NUL)    | Normal      | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+(1, 4)   | (0, 5)   | P        | p                | EnPassant   | (ascii:0-NUL)     | (-1, -1)    | (-1, -1)   | 0                                   |                                   | 0                                  | 0                                
+
+

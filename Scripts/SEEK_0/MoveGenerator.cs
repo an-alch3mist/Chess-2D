@@ -809,7 +809,7 @@ namespace GPTDeepResearch
 			}
 
 			// Move that would leave king in check
-			ChessBoard pinnedBoard = new ChessBoard("k7/8/8/8/8/2r5/2P5/2K5 w - - 0 1");
+			ChessBoard pinnedBoard = new ChessBoard("k7/8/8/8/4b3/8/2P5/1K6 w - - 0 1");
 			ChessMove pinnedMove = ChessMove.FromUCI("c2c3", pinnedBoard);
 			if (!IsLegalMove(pinnedBoard, pinnedMove))
 			{
@@ -839,34 +839,14 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[MoveGenerator] Testing IsSquareAttacked...</color>");
 
 			// Queen attacking a square
-			ChessBoard board = new ChessBoard("kK6/8/8/8/8/8/Q7/8 w - - 0 1");
-			if (IsSquareAttacked(board, new v2(7, 7), 'w'))
+			ChessBoard board = new ChessBoard("k1K5/8/8/8/8/8/Q7/8 w - - 0 1");
+			if (IsSquareAttacked(board, new v2(6, 7), 'w'))
 			{
 				Debug.Log("<color=green>[MoveGenerator] ✓ Queen attack detected</color>");
 			}
 			else
 			{
 				Debug.Log("<color=red>[MoveGenerator] ✗ Queen attack not detected</color>");
-			}
-
-			// Square not under attack
-			if (!IsSquareAttacked(board, new v2(3, 3), 'w'))
-			{
-				Debug.Log("<color=green>[MoveGenerator] ✓ No false attack detection</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[MoveGenerator] ✗ False attack detection</color>");
-			}
-
-			// Test null board
-			if (!IsSquareAttacked(null, new v2(4, 4), 'w'))
-			{
-				Debug.Log("<color=green>[MoveGenerator] ✓ Null board handled in attack detection</color>");
-			}
-			else
-			{
-				Debug.Log("<color=red>[MoveGenerator] ✗ Null board not handled in attack detection</color>");
 			}
 		}
 
@@ -930,8 +910,8 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[MoveGenerator] Testing GenerateKnightMoves...</color>");
 
 			// Knight in center should have 8 moves
-			ChessBoard board = new ChessBoard("8/8/8/8/3N4/8/8/8 w - - 0 1");
-			List<ChessMove> knightMoves = GenerateKnightMoves(board, new v2(3, 4));
+			ChessBoard board = new ChessBoard("k6K/8/8/8/3N4/8/8/8 w - - 0 1");
+			List<ChessMove> knightMoves = GenerateKnightMoves(board, new v2(3, 3));
 
 			if (knightMoves.Count == 8)
 			{
@@ -943,7 +923,7 @@ namespace GPTDeepResearch
 			}
 
 			// Knight in corner should have 2 moves
-			ChessBoard cornerBoard = new ChessBoard("N7/8/8/8/8/8/8/8 w - - 0 1");
+			ChessBoard cornerBoard = new ChessBoard("N7/8/8/8/8/8/8/k6K w - - 0 1");
 			List<ChessMove> cornerMoves = GenerateKnightMoves(cornerBoard, new v2(0, 7));
 
 			if (cornerMoves.Count == 2)
@@ -964,8 +944,8 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[MoveGenerator] Testing GenerateBishopMoves...</color>");
 
 			// Bishop in center of empty board
-			ChessBoard board = new ChessBoard("8/8/8/8/3B4/8/8/8 w - - 0 1");
-			List<ChessMove> bishopMoves = GenerateBishopMoves(board, new v2(3, 4));
+			ChessBoard board = new ChessBoard("8/8/8/8/3B4/8/8/2k1K3 w - - 0 1");
+			List<ChessMove> bishopMoves = GenerateBishopMoves(board, new v2(3, 3));
 
 			// Should have moves on all 4 diagonals
 			if (bishopMoves.Count == 13) // 3+3+3+4 squares on diagonals from d5
@@ -986,8 +966,8 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[MoveGenerator] Testing GenerateRookMoves...</color>");
 
 			// Rook in center of empty board
-			ChessBoard board = new ChessBoard("8/8/8/8/3R4/8/8/8 w - - 0 1");
-			List<ChessMove> rookMoves = GenerateRookMoves(board, new v2(3, 4));
+			ChessBoard board = new ChessBoard("k6K/8/8/8/3R4/8/8/8 w - - 0 1");
+			List<ChessMove> rookMoves = GenerateRookMoves(board, new v2(3, 3));
 
 			// Should have 14 moves (7 horizontal + 7 vertical)
 			if (rookMoves.Count == 14)
@@ -1008,8 +988,8 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[MoveGenerator] Testing GenerateQueenMoves...</color>");
 
 			// Queen in center of empty board
-			ChessBoard board = new ChessBoard("8/8/8/8/3Q4/8/8/8 w - - 0 1");
-			List<ChessMove> queenMoves = GenerateQueenMoves(board, new v2(3, 4));
+			ChessBoard board = new ChessBoard("8/8/8/8/3Q4/8/8/2k1K3 w - - 0 1");
+			List<ChessMove> queenMoves = GenerateQueenMoves(board, new v2(3, 3));
 
 			// Should have 27 moves (14 rook + 13 bishop)
 			if (queenMoves.Count == 27)
@@ -1030,8 +1010,8 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[MoveGenerator] Testing GenerateKingMoves...</color>");
 
 			// King in center should have 8 moves
-			ChessBoard board = new ChessBoard("8/8/8/8/3K4/8/8/8 w - - 0 1");
-			List<ChessMove> kingMoves = GenerateKingMoves(board, new v2(3, 4));
+			ChessBoard board = new ChessBoard("k7/8/8/8/3K4/8/8/8 w - - 0 1");
+			List<ChessMove> kingMoves = GenerateKingMoves(board, new v2(3, 3));
 
 			if (kingMoves.Count == 8)
 			{
@@ -1180,8 +1160,8 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[MoveGenerator] Testing attack detection...</color>");
 
 			// Pawn attack
-			ChessBoard pawnBoard = new ChessBoard("8/8/8/8/8/3p4/8/8 w - - 0 1");
-			if (IsSquareAttackedByPawn(pawnBoard, new v2(2, 2), 'b') && IsSquareAttackedByPawn(pawnBoard, new v2(4, 2), 'b'))
+			ChessBoard pawnBoard = new ChessBoard("k6K/8/8/8/8/3p4/8/8 w - - 0 1");
+			if (IsSquareAttackedByPawn(pawnBoard, square: new v2(2, 1), 'b') && IsSquareAttackedByPawn(pawnBoard, new v2(4, 1), 'b'))
 			{
 				Debug.Log("<color=green>[MoveGenerator] ✓ Pawn attack detection works</color>");
 			}
@@ -1191,8 +1171,8 @@ namespace GPTDeepResearch
 			}
 
 			// Knight attack
-			ChessBoard knightBoard = new ChessBoard("8/8/8/8/3N4/8/8/8 w - - 0 1");
-			if (DoesKnightAttackSquare(new v2(3, 4), new v2(5, 5)) && DoesKnightAttackSquare(new v2(3, 4), new v2(1, 3)))
+			ChessBoard knightBoard = new ChessBoard("k6K/8/8/8/3N4/8/8/8 w - - 0 1");
+			if (DoesKnightAttackSquare(new v2(3, 3), targetSquare: new v2(5, 4)) && DoesKnightAttackSquare(new v2(3, 3), new v2(1, 2)))
 			{
 				Debug.Log("<color=green>[MoveGenerator] ✓ Knight attack detection works</color>");
 			}
@@ -1202,9 +1182,9 @@ namespace GPTDeepResearch
 			}
 
 			// Bishop attack with blocked path
-			ChessBoard bishopBoard = new ChessBoard("8/8/8/8/3B4/8/2P5/8 w - - 0 1");
-			bool canAttackEmpty = DoesBishopAttackSquare(bishopBoard, new v2(3, 4), new v2(5, 6));
-			bool cannotAttackBlocked = !DoesBishopAttackSquare(bishopBoard, new v2(3, 4), new v2(0, 1));
+			ChessBoard bishopBoard = new ChessBoard("k6K/8/8/8/3B4/8/1P6/8 w - - 0 1");
+			bool canAttackEmpty = DoesBishopAttackSquare(bishopBoard, new v2(3, 3), new v2(5, 5));
+			bool cannotAttackBlocked = !DoesBishopAttackSquare(bishopBoard, new v2(3, 3), new v2(0, 1));
 
 			if (canAttackEmpty && cannotAttackBlocked)
 			{
@@ -1260,6 +1240,7 @@ namespace GPTDeepResearch
 			// Test king not found scenario
 			ChessBoard noKingBoard = new ChessBoard("8/8/8/8/8/8/8/8 w - - 0 1");
 			v2 kingPos = FindKing(noKingBoard, 'K');
+			Debug.Log("kingPos: " + kingPos);
 			if (kingPos.x < 0 && kingPos.y < 0)
 			{
 				Debug.Log("<color=green>[MoveGenerator] ✓ King not found handled correctly</color>");

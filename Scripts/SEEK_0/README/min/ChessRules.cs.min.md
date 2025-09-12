@@ -1,81 +1,68 @@
-# Source: `ChessRules.cs` — Chess rules validation and game state evaluation
+# Source: `ChessRules.cs` — Chess rules validation and game state evaluation engine
 
-## Static class providing comprehensive chess rules validation, game termination detection, and move application with enhanced promotion support.
-
-Handles game state evaluation including checkmate, stalemate, draws, and position validation. Supports move application with special handling for castling, en passant, and promotions. Includes extensive testing framework for rule validation.
+## Short description
+Implements comprehensive chess rules validation, move legality checking, game state evaluation, and position analysis for Unity 2020.3 chess engines. Provides static methods for validating moves, detecting checkmate/stalemate, managing promotion rules, and tracking game-ending conditions like threefold repetition and insufficient material.
 
 ## Metadata
 * **Filename:** `ChessRules.cs`
 * **Primary namespace:** `GPTDeepResearch`
 * **Dependencies:** `System`, `System.Collections.Generic`, `System.Linq`, `UnityEngine`, `SPACE_UTIL`
 * **Public types:** `ChessRules (static class), ChessRules.GameResult (enum), ChessRules.EvaluationInfo (struct)`
-* **Unity version:** Unity 2020.3+ (UnityEngine.Debug usage)
+* **Unity version:** 2020.3 (mentioned in comments)
 
 ## Public API Summary
 | Type | Member | Signature | Short Purpose | OneLiner Call |
 |------|---------|-----------|---------------|---------------|
-| ChessRules.GameResult (enum) | Method | public static ChessRules.GameResult EvaluatePosition(ChessBoard board, List<string> moveHistory = null) | Evaluate current game state for termination | var result = ChessRules.EvaluatePosition(board); |
-| ChessRules.EvaluationInfo (struct) | Method | public static ChessRules.EvaluationInfo GetEvaluationInfo(ChessBoard board, float centipawns = 0f, float winProbability = 0.5f, float mateDistance = 0f) | Get evaluation info for UI display | var info = ChessRules.GetEvaluationInfo(board, 50.0f); |
-| bool | Method | public static bool IsInCheck(ChessBoard board, char side) | Check if given side's king is in check | bool inCheck = ChessRules.IsInCheck(board, 'w'); |
-| bool | Method | public static bool RequiresPromotion(ChessBoard board, ChessMove move) | Check if move requires pawn promotion | bool needsPromo = ChessRules.RequiresPromotion(board, move); |
-| bool | Method | public static bool ValidateMove(ChessBoard board, ChessMove move) | Validate if move is legal according to chess rules | bool valid = ChessRules.ValidateMove(board, move); |
-| bool | Method | public static bool ValidatePromotionMove(ChessBoard board, ChessMove move) | Validate promotion move requirements | bool validPromo = ChessRules.ValidatePromotionMove(board, move); |
-| bool | Method | public static bool MakeMove(ChessBoard board, ChessMove move) | Apply move to board and update game state | bool applied = ChessRules.MakeMove(board, move); |
-| bool | Method | public static bool DoesMoveCauseCheck(ChessBoard board, ChessMove move) | Check if move puts opponent in check | bool causesCheck = ChessRules.DoesMoveCauseCheck(board, move); |
-| bool | Method | public static bool IsCheckingMove(ChessBoard board, ChessMove move) | Check if move is a checking move | bool isChecking = ChessRules.IsCheckingMove(board, move); |
-| List<v2> | Method | public static List<v2> GetAttackingPieces(ChessBoard board, v2 square, char attackingSide) | Get all pieces attacking a square | var attackers = ChessRules.GetAttackingPieces(board, pos, 'b'); |
-| v2 | Method | public static v2 FindKing(ChessBoard board, char king) | Find king position for given side | v2 kingPos = ChessRules.FindKing(board, 'K'); |
-| bool | Method | public static bool ValidatePosition(ChessBoard board) | Comprehensive FEN validation for any chess position | bool valid = ChessRules.ValidatePosition(board); |
-| void | Method | public static void RunAllTests() | Execute comprehensive rule validation tests | ChessRules.RunAllTests(); |
+| ChessRules.GameResult | Method | public static GameResult EvaluatePosition(ChessBoard board, List<string> moveHistory = null) | Evaluates current game state | var result = ChessRules.EvaluatePosition(board); |
+| ChessRules.EvaluationInfo | Method | public static EvaluationInfo GetEvaluationInfo(ChessBoard board, float centipawns = 0f, float winProbability = 0.5f, float mateDistance = 0f) | Gets evaluation info for UI | var info = ChessRules.GetEvaluationInfo(board, 50f); |
+| bool | Method | public static bool IsInCheck(ChessBoard board, char side) | Checks if side is in check | var inCheck = ChessRules.IsInCheck(board, 'w'); |
+| bool | Method | public static bool RequiresPromotion(ChessBoard board, ChessMove move) | Checks if move requires promotion | var needsPromotion = ChessRules.RequiresPromotion(board, move); |
+| bool | Method | public static bool ValidateMove(ChessBoard board, ChessMove move) | Validates move legality | var isValid = ChessRules.ValidateMove(board, move); |
+| bool | Method | public static bool ValidatePromotionMove(ChessBoard board, ChessMove move) | Validates promotion move requirements | var validPromo = ChessRules.ValidatePromotionMove(board, move); |
+| bool | Method | public static bool MakeMove(ChessBoard board, ChessMove move) | Applies move to board | var success = ChessRules.MakeMove(board, move); |
+| bool | Method | public static bool DoesMoveCauseCheck(ChessBoard board, ChessMove move) | Tests if move puts opponent in check | var causesCheck = ChessRules.DoesMoveCauseCheck(board, move); |
+| bool | Method | public static bool IsCheckingMove(ChessBoard board, ChessMove move) | Checks if move is a checking move | var isCheck = ChessRules.IsCheckingMove(board, move); |
+| List<v2> | Method | public static List<v2> GetAttackingPieces(ChessBoard board, v2 square, char attackingSide) | Gets pieces attacking square | var attackers = ChessRules.GetAttackingPieces(board, square, 'w'); |
+| v2 | Method | public static v2 FindKing(ChessBoard board, char king) | Finds king position on board | var kingPos = ChessRules.FindKing(board, 'K'); |
+| bool | Method | public static bool ValidatePosition(ChessBoard board) | Validates FEN position legality | var validPos = ChessRules.ValidatePosition(board); |
+| void | Method | public static void ClearPositionHistory() | Clears threefold repetition history | ChessRules.ClearPositionHistory(); |
+| void | Method | public static void RunAllTests() | Runs comprehensive rule tests | ChessRules.RunAllTests(); |
 
 ## Important Types
-
-### `ChessRules`
-* **Kind:** static class
-* **Responsibility:** Provides chess rules validation and game state management functionality
-* **Constructor(s):** None (static class)
-* **Public Properties:** None
-* **Public Methods:**
-  * **`public static ChessRules.GameResult EvaluatePosition(ChessBoard board, List<string> moveHistory = null)`**
-    * Description: Evaluates current position for game termination conditions
-    * Parameters: `board : ChessBoard — position to evaluate`, `moveHistory : List<string> — optional move history for repetition detection`
-    * Returns: `ChessRules.GameResult — game state enum value` + call example: `var gameState = ChessRules.EvaluatePosition(currentBoard);`
-    * Notes: Detects checkmate, stalemate, draws, insufficient material
-
-  * **`public static bool MakeMove(ChessBoard board, ChessMove move)`**
-    * Description: Applies move to board with full rule compliance and state updates
-    * Parameters: `board : ChessBoard — board to modify`, `move : ChessMove — move to apply`
-    * Returns: `bool — true if move was successfully applied` + call example: `bool success = ChessRules.MakeMove(gameBoard, playerMove);`
-    * Notes: Updates castling rights, en passant, move counters, handles special moves
-
-  * **`public static bool ValidateMove(ChessBoard board, ChessMove move)`**
-    * Description: Validates move legality according to all chess rules
-    * Parameters: `board : ChessBoard — current position`, `move : ChessMove — move to validate`
-    * Returns: `bool — true if move is legal` + call example: `bool canPlay = ChessRules.ValidateMove(board, inputMove);`
-    * Notes: Comprehensive validation including piece ownership, legal moves, check avoidance
 
 ### `ChessRules.GameResult`
 * **Kind:** enum
 * **Responsibility:** Represents possible game termination states
-* **Values:** `InProgress, WhiteWins, BlackWins, Draw, Stalemate, InsufficientMaterial, FiftyMoveRule, ThreefoldRepetition`
+* **Values:**
+  * `InProgress` — Game continues
+  * `WhiteWins` — White wins by checkmate
+  * `BlackWins` — Black wins by checkmate
+  * `Draw` — Generic draw
+  * `Stalemate` — Draw by stalemate
+  * `InsufficientMaterial` — Draw by insufficient material
+  * `FiftyMoveRule` — Draw by fifty-move rule
+  * `ThreefoldRepetition` — Draw by threefold repetition
 
 ### `ChessRules.EvaluationInfo`
-* **Kind:** struct
+* **Kind:** struct with private setters
 * **Responsibility:** Encapsulates position evaluation data for UI display
-* **Constructor(s):** Default struct constructor
+* **Constructor:** `public EvaluationInfo(float centipawns, float winProbability, float mateDistance, bool isCheckmate, bool isStalemate, char sideToMove)`
 * **Public Properties:**
-  * `centipawns` — `float` — position evaluation in centipawns (`get/set`)
-  * `winProbability` — `float` — probability of winning (0-1) (`get/set`)
-  * `mateDistance` — `float` — moves to mate if applicable (`get/set`)
-  * `isCheckmate` — `bool` — true if position is checkmate (`get/set`)
-  * `isStalemate` — `bool` — true if position is stalemate (`get/set`)
-  * `sideToMove` — `char` — current side to move ('w' or 'b') (`get/set`)
+  * `centipawns` — `float` — Position evaluation in centipawns (`get`)
+  * `winProbability` — `float` — Win probability 0.0-1.0 (`get`)
+  * `mateDistance` — `float` — Moves to mate if applicable (`get`)
+  * `isCheckmate` — `bool` — True if position is checkmate (`get`)
+  * `isStalemate` — `bool` — True if position is stalemate (`get`)
+  * `sideToMove` — `char` — Side to move ('w'/'b') (`get`)
 * **Public Methods:**
   * **`public string GetDisplayText()`**
-    * Description: Formats evaluation info for UI display
-    * Parameters: None
-    * Returns: `string — formatted evaluation text` + call example: `string display = info.GetDisplayText();`
-    * Notes: Handles mate announcements, stalemate, and centipawn display
+    * Description: Returns formatted display text for UI
+    * Returns: `string` — Formatted evaluation text
+    * Example: `var displayText = evalInfo.GetDisplayText();`
+  * **`public override string ToString()`**
+    * Description: Returns detailed debug string representation
+    * Returns: `string` — Debug format with all fields
+    * Example: `var debugStr = evalInfo.ToString();`
 
 ## Example Usage
 **Required namespaces:**
@@ -93,34 +80,34 @@ public class ExampleUsage : MonoBehaviour
 {
     private void ChessRules_Check()
     {
-        // Test all major public APIs in minimal lines
         var board = new ChessBoard();
-        var gameResult = ChessRules.EvaluatePosition(board);
-        var evalInfo = ChessRules.GetEvaluationInfo(board, 25.0f, 0.55f);
-        var testMove = ChessMove.FromUCI("e2e4", board);
-        bool inCheck = ChessRules.IsInCheck(board, 'w');
-        bool needsPromo = ChessRules.RequiresPromotion(board, testMove);
-        bool validMove = ChessRules.ValidateMove(board, testMove);
-        bool moveApplied = ChessRules.MakeMove(board, testMove);
-        var kingPos = ChessRules.FindKing(board, 'K');
-        bool validPosition = ChessRules.ValidatePosition(board);
-        ChessRules.RunAllTests();
+        var move = ChessMove.FromUCI("e2e4", board);
         
-        Debug.Log($"API Results: {gameResult}, eval: {evalInfo.GetDisplayText()}, check: {inCheck}, promotion: {needsPromo}, valid: {validMove}, applied: {moveApplied}, king: {kingPos}, position valid: {validPosition}, tests completed");
+        var gameResult = ChessRules.EvaluatePosition(board);
+        var evalInfo = ChessRules.GetEvaluationInfo(board, 25f, 0.55f);
+        var inCheck = ChessRules.IsInCheck(board, 'w');
+        var needsPromotion = ChessRules.RequiresPromotion(board, move);
+        var validMove = ChessRules.ValidateMove(board, move);
+        var moveSuccess = ChessRules.MakeMove(board, move);
+        var kingPos = ChessRules.FindKing(board, 'K');
+        var validPosition = ChessRules.ValidatePosition(board);
+        var displayText = evalInfo.GetDisplayText();
+        
+        Debug.Log($"API Results: {gameResult}, {evalInfo}, {inCheck}, {needsPromotion}, {validMove}, {moveSuccess}, {kingPos}, {validPosition}, {displayText}");
     }
 }
 ```
 
 ## Control Flow & Responsibilities
-Evaluates game states, validates moves, applies rules, updates board state with comprehensive error checking.
+Static rule engine: validates moves, detects game endings, manages position history for repetitions.
 
-## Performance & Threading
-Board cloning for move validation, position scanning for checks, extensive rule verification processing.
+## Performance & Threading  
+Main-thread only, position cloning for lookahead, memory-limited history tracking.
 
 ## Cross-file Dependencies
-ChessBoard.cs ChessMove.cs MoveGenerator.cs for position, moves, and legal move generation.
+References ChessBoard.cs, ChessMove.cs, MoveGenerator.cs for board state and move generation.
 
 ## Major Functionality
-Game termination detection, move validation, position validation, castling rights management, promotion handling, check detection.
+Promotion validation, threefold repetition tracking, insufficient material detection, comprehensive position validation.
 
-`checksum: B8D4E1F7 v0.3.min`
+`checksum: a7f9c2d1 v0.3.min`
