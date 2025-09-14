@@ -1,9 +1,10 @@
-﻿using System.Collections;
+﻿using System.Linq;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 using SPACE_UTIL;
-using System.Linq;
 
 namespace GPTDeepResearch
 {
@@ -29,7 +30,8 @@ namespace GPTDeepResearch
 			// this.MoveGenerator_Check();
 			// this.ChessRules_Check();
 
-			yield return PromotionUI_Check();
+			// TODO: PromotionUI functionality, and integrate everything with StockfishEngine on Chess-2D Visual
+			this.PromotionUI_Check();
 			//
 			yield return null;
 
@@ -414,59 +416,36 @@ namespace GPTDeepResearch
 		// << Checked ChessRules
 
 
-
 		[SerializeField] private PromotionUI promotionUI; // Assign in Inspector
+
 		private IEnumerator PromotionUI_Check()
 		{
-			// Subscribe to promotion events
-			promotionUI.OnPromotionSelected += OnPieceSelected;
-			promotionUI.OnPromotionCancelled += OnPromotionCancelled;
+			// Setup event handlers
+			promotionUI.OnPromotionSelected += HandlePromotion;
+			promotionUI.OnPromotionSelectedWithData += HandlePromotionData;
 
-			// Show promotion dialog for white player
+			// Test human selection dialog
 			promotionUI.ShowPromotionDialog(true, "e7", "e8");
-			// Expected output: "[PromotionUI] Showing promotion dialog for White"
-			Debug.Log("<color=cyan>Promotion dialog shown for white</color>");
+			yield return new WaitUntil(() => !promotionUI.IsWaitingForPromotion());
 
-			// Check if waiting for selection
-			bool isWaiting = promotionUI.IsWaitingForPromotion();
-			// Expected output: "Currently waiting: True"
-			Debug.Log($"<color=green>Currently waiting: {isWaiting}</color>");
+			// Test engine auto-selection
+			promotionUI.SelectPromotionAutomatically('Q', false);
 
-			// Wait for user selection or timeout
-			yield return new WaitForSeconds(1.0f);
+			// Test context and state
+			var context = promotionUI.GetPromotionContext();
+			bool waiting = promotionUI.IsWaitingForPromotion();
+			bool engine = promotionUI.IsEngineSelection();
 
-			// Force default selection programmatically
-			if (promotionUI.IsWaitingForPromotion())
-			{
-				promotionUI.SelectDefaultPromotion();
-				// Expected output: "[PromotionUI] Selected promotion: Queen"
-				Debug.Log("<color=green>Default promotion selected</color>");
-			}
+			// Test data object
+			var data = new PromotionSelectionData('R', true, "a7", "a8");
+			string description = data.ToString();
 
-			// Create promotion selection data
-			var selectionData = new PromotionSelectionData('Q', true, "e7", "e8");
-			// Expected output: "White promotes to Queen"
-			Debug.Log($"<color=green>Selection: {selectionData.ToString()}</color>");
-
-			// Test the component
-			promotionUI.RunAllTests();
-			// Expected output: "[PromotionUI] ✓ All tests completed successfully"
-
-			// Show current state
-			// Expected output: "PromotionUI[Waiting:False, Side:White, Selected:Q, Default:Q, Timeout:3s]"
-			Debug.Log($"<color=cyan>State: {promotionUI.ToString()}</color>");
-
+			Debug.Log($"API Results: Context={context}, Waiting={waiting}, Engine={engine}, Data={description}");
 			yield break;
 		}
-		private void OnPieceSelected(char piece)
-		{
-			// Expected output: "Player selected: Q"
-			Debug.Log($"<color=green>Player selected: {piece}</color>");
-		}
-		private void OnPromotionCancelled()
-		{
-			// Expected output: "Promotion was cancelled"
-			Debug.Log("<color=yellow>Promotion was cancelled</color>");
-		}
+
+		private void HandlePromotion(char piece) { }
+		private void HandlePromotionData(PromotionSelectionData data) { }
+
 	}
 }

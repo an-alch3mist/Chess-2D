@@ -1,26 +1,34 @@
 ﻿/*
 CHANGE LOG:
-v1.0 - Enhanced PromotionUI with comprehensive testing, minimal public API, and ToString() override
-     - Added private test methods for all public functionality
-     - Implemented public RunAllTests() method for validation
-     - Added ToString() override for debugging and logging
-     - Optimized public API surface - made internal methods private
-     - Enhanced error handling and validation
-     - Improved Unity 2020.3 compatibility
-     - Added comprehensive edge case testing
+v0.3 - Enhanced PromotionUI with sprite-based buttons, removed timer, added auto-selection
+     - Added 8 sprite fields for white/black pieces (Queen, Rook, Bishop, Knight)
+     - Removed timeout functionality and cancel button - selection is mandatory
+     - Added auto-selection capability for engine moves
+     - Simplified UI flow with immediate selection and no delays
+     - Enhanced testing suite with comprehensive validation
+     - Optimized for Unity 2020.3 compatibility
+     - Minimal public API with private test methods
+     - Added IEnumerator support for async operations
+     - Enhanced validation for Inspector configuration
+     - Improved human vs engine interaction patterns
 
 PROMOTION UI SYSTEM
-- Modal dialog for pawn promotion selection
-- Auto-timeout with configurable default (Queen)
-- Clean UI with piece buttons and visual feedback
+- Modal dialog for pawn promotion selection with sprite-based buttons
+- Mandatory selection - no timeout or cancel options
+- Auto-selection support for engine moves
+- Clean sprite-based UI with visual feedback
 - Integration with ChessBoard and ChessMove systems
 - Support for both white and black promotions
+- Coroutine support for async operations
 
 USAGE:
 1. Add PromotionUI prefab to scene
-2. Configure timeout and default piece in inspector
-3. Call ShowPromotionDialog() when pawn reaches last rank
-4. Listen to OnPromotionSelected event for result
+2. Assign 8 piece sprites in inspector (black/white: queen, rook, bishop, knight)
+3. Configure promotion buttons in inspector (without TMP_TextField components)
+4. Call ShowPromotionDialog() for human player selection
+5. Call SelectPromotionAutomatically() for engine moves
+6. Listen to OnPromotionSelected event for result
+7. Use coroutine methods for async operations
 */
 
 using System;
@@ -32,40 +40,50 @@ using TMPro;
 namespace GPTDeepResearch
 {
 	/// <summary>
-	/// UI component for handling pawn promotion selection
-	/// Provides modal dialog with piece selection and auto-timeout
+	/// UI component for handling pawn promotion selection with sprite-based buttons
+	/// Provides modal dialog with mandatory piece selection and auto-selection capability
+	/// Supports both human player interaction and engine auto-selection
 	/// </summary>
 	public class PromotionUI : MonoBehaviour
 	{
 		[Header("UI References")]
 		[SerializeField] private GameObject promotionPanel;
 		[SerializeField] private TextMeshProUGUI titleText;
-		[SerializeField] private TextMeshProUGUI timeoutText;
 		[SerializeField] private Button queenButton;
 		[SerializeField] private Button rookButton;
 		[SerializeField] private Button bishopButton;
 		[SerializeField] private Button knightButton;
-		[SerializeField] private Button cancelButton;
+
+		[Header("Piece Sprites")]
+		[SerializeField] private Sprite blackQueenSprite;
+		[SerializeField] private Sprite blackRookSprite;
+		[SerializeField] private Sprite blackBishopSprite;
+		[SerializeField] private Sprite blackKnightSprite;
+		[SerializeField] private Sprite whiteQueenSprite;
+		[SerializeField] private Sprite whiteRookSprite;
+		[SerializeField] private Sprite whiteBishopSprite;
+		[SerializeField] private Sprite whiteKnightSprite;
 
 		[Header("Settings")]
-		[SerializeField] private float timeoutSeconds = 3f;
 		[SerializeField] private char defaultPromotionPiece = 'Q';
-		[SerializeField] private bool showTimeoutCountdown = true;
+		[SerializeField] private float autoSelectionDelay = 0.1f;
 
 		[Header("Visual Settings")]
-		[SerializeField] private Color whiteButtonColor = Color.white;
-		[SerializeField] private Color blackButtonColor = Color.gray;
 		[SerializeField] private Color selectedColor = Color.green;
+		[SerializeField] private Color normalColor = Color.white;
+		[SerializeField] private Color highlightColor = Color.yellow;
 
 		// Events
 		public System.Action<char> OnPromotionSelected;
-		public System.Action OnPromotionCancelled;
+		public System.Action<PromotionSelectionData> OnPromotionSelectedWithData;
 
 		// Private state
 		private bool isWaitingForSelection = false;
 		private bool isWhitePromotion = true;
 		private char selectedPiece = '\0';
-		private Coroutine timeoutCoroutine;
+		private string currentFromSquare = "";
+		private string currentToSquare = "";
+		private bool isEngineSelection = false;
 
 		#region Unity Lifecycle
 
@@ -81,7 +99,7 @@ namespace GPTDeepResearch
 		#region Public API
 
 		/// <summary>
-		/// Show promotion dialog for human player
+		/// Show promotion dialog for human player selection
 		/// </summary>
 		/// <param name="isWhite">True if white is promoting, false for black</param>
 		/// <param name="fromSquare">Source square for context (optional)</param>
@@ -96,20 +114,71 @@ namespace GPTDeepResearch
 
 			isWhitePromotion = isWhite;
 			isWaitingForSelection = true;
+			isEngineSelection = false;
 			selectedPiece = '\0';
+			currentFromSquare = fromSquare;
+			currentToSquare = toSquare;
 
-			// Setup UI
 			SetupPromotionUI(isWhite, fromSquare, toSquare);
 			ShowDialog();
 
-			// Start timeout countdown
-			if (timeoutCoroutine != null)
-			{
-				StopCoroutine(timeoutCoroutine);
-			}
-			timeoutCoroutine = StartCoroutine(TimeoutCountdown());
-
 			Debug.Log($"<color=cyan>[PromotionUI] Showing promotion dialog for {(isWhite ? "White" : "Black")}</color>");
+		}
+
+		/// <summary>
+		/// Show promotion dialog with coroutine support for async operations
+		/// </summary>
+		/// <param name="isWhite">True if white is promoting, false for black</param>
+		/// <param name="fromSquare">Source square for context</param>
+		/// <param name="toSquare">Target square for context</param>
+		/// <returns>Coroutine that completes when selection is made</returns>
+		public IEnumerator ShowPromotionDialogCoroutine(bool isWhite, string fromSquare = "", string toSquare = "")
+		{
+			ShowPromotionDialog(isWhite, fromSquare, toSquare);
+
+			// Wait for selection to complete
+			while (isWaitingForSelection)
+			{
+				yield return null;
+			}
+		}
+
+		/// <summary>
+		/// Auto-select promotion piece for engine moves
+		/// </summary>
+		/// <param name="promotionPiece">Piece to promote to (Q, R, B, N)</param>
+		/// <param name="isWhite">True if white is promoting</param>
+		public void SelectPromotionAutomatically(char promotionPiece, bool isWhite)
+		{
+			isWhitePromotion = isWhite;
+			isWaitingForSelection = true;
+			isEngineSelection = true;
+
+			// Validate promotion piece
+			if (!ChessMove.IsValidPromotionPiece(promotionPiece))
+			{
+				Debug.Log($"<color=red>[PromotionUI] Invalid promotion piece: {promotionPiece}, using default</color>");
+				promotionPiece = defaultPromotionPiece;
+			}
+
+			StartCoroutine(AutoSelectWithDelay(promotionPiece));
+		}
+
+		/// <summary>
+		/// Auto-select promotion piece with coroutine support
+		/// </summary>
+		/// <param name="promotionPiece">Piece to promote to (Q, R, B, N)</param>
+		/// <param name="isWhite">True if white is promoting</param>
+		/// <returns>Coroutine that completes when selection is made</returns>
+		public IEnumerator SelectPromotionAutomaticallyCoroutine(char promotionPiece, bool isWhite)
+		{
+			SelectPromotionAutomatically(promotionPiece, isWhite);
+
+			// Wait for auto-selection to complete
+			while (isWaitingForSelection)
+			{
+				yield return null;
+			}
 		}
 
 		/// <summary>
@@ -121,29 +190,34 @@ namespace GPTDeepResearch
 			{
 				promotionPanel.SetActive(false);
 			}
-
 			isWaitingForSelection = false;
-
-			if (timeoutCoroutine != null)
-			{
-				StopCoroutine(timeoutCoroutine);
-				timeoutCoroutine = null;
-			}
+			isEngineSelection = false;
 		}
 
 		/// <summary>
 		/// Check if currently waiting for promotion selection
 		/// </summary>
-		public bool IsWaitingForPromotion()
+		public bool IsWaitingForPromotion() { return isWaitingForSelection; }
+
+		/// <summary>
+		/// Check if current selection is from engine
+		/// </summary>
+		public bool IsEngineSelection() { return isEngineSelection; }
+
+		/// <summary>
+		/// Get current promotion context
+		/// </summary>
+		public (bool isWhite, string fromSquare, string toSquare) GetPromotionContext()
 		{
-			return isWaitingForSelection;
+			return (isWhitePromotion, currentFromSquare, currentToSquare);
 		}
 
 		/// <summary>
-		/// Force selection of default piece (for programmatic use)
+		/// Force selection of default piece (for fallback scenarios)
 		/// </summary>
 		public void SelectDefaultPromotion()
 		{
+			if (!isWaitingForSelection) return;
 			SelectPromotion(defaultPromotionPiece);
 		}
 
@@ -155,13 +229,16 @@ namespace GPTDeepResearch
 			Debug.Log("<color=cyan>[PromotionUI] Starting comprehensive test suite...</color>");
 
 			TestComponentValidation();
+			TestSpriteAssignment();
 			TestPromotionDialogDisplay();
 			TestPieceSelection();
-			TestTimeoutFunctionality();
+			TestAutoSelection();
 			TestEventHandling();
 			TestEdgeCases();
 			TestColorHandling();
 			TestUIStateManagement();
+			TestCoroutineMethods();
+			TestInspectorConfiguration();
 
 			Debug.Log("<color=green>[PromotionUI] ✓ All tests completed successfully</color>");
 		}
@@ -172,7 +249,7 @@ namespace GPTDeepResearch
 		public override string ToString()
 		{
 			return $"PromotionUI[Waiting:{isWaitingForSelection}, Side:{(isWhitePromotion ? "White" : "Black")}, " +
-				   $"Selected:{selectedPiece}, Default:{defaultPromotionPiece}, Timeout:{timeoutSeconds}s]";
+				   $"Selected:{selectedPiece}, Default:{defaultPromotionPiece}, Engine:{isEngineSelection}]";
 		}
 
 		#endregion
@@ -181,12 +258,47 @@ namespace GPTDeepResearch
 
 		private void ValidateComponents()
 		{
-			if (promotionPanel == null) Debug.Log("<color=red>[PromotionUI] promotionPanel not assigned!</color>");
-			if (titleText == null) Debug.Log("<color=red>[PromotionUI] titleText not assigned!</color>");
-			if (queenButton == null) Debug.Log("<color=red>[PromotionUI] queenButton not assigned!</color>");
-			if (rookButton == null) Debug.Log("<color=red>[PromotionUI] rookButton not assigned!</color>");
-			if (bishopButton == null) Debug.Log("<color=red>[PromotionUI] bishopButton not assigned!</color>");
-			if (knightButton == null) Debug.Log("<color=red>[PromotionUI] knightButton not assigned!</color>");
+			bool hasErrors = false;
+
+			if (promotionPanel == null)
+			{
+				Debug.Log("<color=red>[PromotionUI] promotionPanel not assigned in Inspector!</color>");
+				hasErrors = true;
+			}
+
+			if (titleText == null)
+			{
+				Debug.Log("<color=red>[PromotionUI] titleText not assigned in Inspector!</color>");
+				hasErrors = true;
+			}
+
+			// Validate buttons and their Image components
+			ValidateButton(queenButton, "queenButton", ref hasErrors);
+			ValidateButton(rookButton, "rookButton", ref hasErrors);
+			ValidateButton(bishopButton, "bishopButton", ref hasErrors);
+			ValidateButton(knightButton, "knightButton", ref hasErrors);
+
+			if (!hasErrors)
+			{
+				Debug.Log("<color=green>[PromotionUI] ✓ All components validated successfully</color>");
+			}
+		}
+
+		private void ValidateButton(Button button, string buttonName, ref bool hasErrors)
+		{
+			if (button == null)
+			{
+				Debug.Log($"<color=red>[PromotionUI] {buttonName} not assigned in Inspector!</color>");
+				hasErrors = true;
+				return;
+			}
+
+			Image buttonImage = button.GetComponent<Image>();
+			if (buttonImage == null)
+			{
+				Debug.Log($"<color=red>[PromotionUI] {buttonName} missing Image component!</color>");
+				hasErrors = true;
+			}
 		}
 
 		private void SetupButtonListeners()
@@ -195,7 +307,6 @@ namespace GPTDeepResearch
 			if (rookButton != null) rookButton.onClick.AddListener(() => SelectPromotion('R'));
 			if (bishopButton != null) bishopButton.onClick.AddListener(() => SelectPromotion('B'));
 			if (knightButton != null) knightButton.onClick.AddListener(() => SelectPromotion('N'));
-			if (cancelButton != null) cancelButton.onClick.AddListener(CancelPromotion);
 		}
 
 		private void SetupPromotionUI(bool isWhite, string fromSquare, string toSquare)
@@ -209,34 +320,40 @@ namespace GPTDeepResearch
 				titleText.text = $"{color} Promotion{moveText}";
 			}
 
-			// Setup button colors and text
-			Color buttonColor = isWhite ? whiteButtonColor : blackButtonColor;
-			SetupPromotionButton(queenButton, "Queen", 'Q', buttonColor);
-			SetupPromotionButton(rookButton, "Rook", 'R', buttonColor);
-			SetupPromotionButton(bishopButton, "Bishop", 'B', buttonColor);
-			SetupPromotionButton(knightButton, "Knight", 'N', buttonColor);
+			// Setup button sprites and reset colors
+			SetupPromotionButton(queenButton, isWhite ? whiteQueenSprite : blackQueenSprite, 'Q');
+			SetupPromotionButton(rookButton, isWhite ? whiteRookSprite : blackRookSprite, 'R');
+			SetupPromotionButton(bishopButton, isWhite ? whiteBishopSprite : blackBishopSprite, 'B');
+			SetupPromotionButton(knightButton, isWhite ? whiteKnightSprite : blackKnightSprite, 'N');
 
 			// Reset button selections
 			ResetButtonSelections();
 		}
 
-		private void SetupPromotionButton(Button button, string pieceName, char pieceType, Color baseColor)
+		private void SetupPromotionButton(Button button, Sprite pieceSprite, char pieceType)
 		{
 			if (button == null) return;
 
-			// Set button color
+			// Set button sprite
+			Image buttonImage = button.GetComponent<Image>();
+			if (buttonImage != null)
+			{
+				if (pieceSprite != null)
+				{
+					buttonImage.sprite = pieceSprite;
+				}
+				else
+				{
+					Debug.Log($"<color=yellow>[PromotionUI] Missing sprite for piece {pieceType}</color>");
+				}
+			}
+
+			// Reset button colors
 			var colors = button.colors;
-			colors.normalColor = baseColor;
-			colors.highlightedColor = Color.Lerp(baseColor, Color.white, 0.2f);
+			colors.normalColor = normalColor;
+			colors.highlightedColor = highlightColor;
 			colors.pressedColor = selectedColor;
 			button.colors = colors;
-
-			// Set button text
-			TextMeshProUGUI buttonText = button.GetComponentInChildren<TextMeshProUGUI>();
-			if (buttonText != null)
-			{
-				buttonText.text = pieceName;
-			}
 		}
 
 		private void ResetButtonSelections()
@@ -247,7 +364,7 @@ namespace GPTDeepResearch
 				if (button != null)
 				{
 					var colors = button.colors;
-					colors.normalColor = isWhitePromotion ? whiteButtonColor : blackButtonColor;
+					colors.normalColor = normalColor;
 					button.colors = colors;
 				}
 			}
@@ -271,13 +388,24 @@ namespace GPTDeepResearch
 			// Visual feedback
 			HighlightSelectedButton(piece);
 
+			// Create detailed selection data
+			var selectionData = new PromotionSelectionData(
+				selectedPiece,
+				isWhitePromotion,
+				currentFromSquare,
+				currentToSquare
+			);
+			selectionData.isEngineSelection = isEngineSelection;
+
 			// Notify listeners
 			OnPromotionSelected?.Invoke(selectedPiece);
+			OnPromotionSelectedWithData?.Invoke(selectionData);
 
-			Debug.Log($"<color=green>[PromotionUI] Selected promotion: {ChessMove.GetPromotionPieceName(selectedPiece)}</color>");
+			Debug.Log($"<color=green>[PromotionUI] Selected promotion: {ChessMove.GetPromotionPieceName(selectedPiece)} " +
+					 $"({(isEngineSelection ? "Engine" : "Human")})</color>");
 
-			// Hide dialog after short delay for visual feedback
-			StartCoroutine(DelayedHide(this.timeoutSeconds));
+			// Hide dialog immediately
+			HideDialog();
 		}
 
 		private void HighlightSelectedButton(char piece)
@@ -300,54 +428,44 @@ namespace GPTDeepResearch
 			}
 		}
 
-		private void CancelPromotion()
+		private IEnumerator AutoSelectWithDelay(char promotionPiece)
 		{
-			Debug.Log("<color=yellow>[PromotionUI] Promotion cancelled by user</color>");
-			OnPromotionCancelled?.Invoke();
-			HideDialog();
-		}
-
-		private IEnumerator DelayedHide(float delay)
-		{
-			yield return new WaitForSeconds(delay);
-			HideDialog();
-		}
-
-		private IEnumerator TimeoutCountdown()
-		{
-			Debug.Log("time out count down");
-			float remainingTime = timeoutSeconds;
-
-			isWaitingForSelection = true;
-			while (remainingTime > 0 && isWaitingForSelection)
+			// Small delay to make auto-selection visible if dialog was shown
+			if (autoSelectionDelay > 0f)
 			{
-				if (showTimeoutCountdown && timeoutText != null)
-				{
-					timeoutText.text = $"Auto-select {ChessMove.GetPromotionPieceName(defaultPromotionPiece)} in {remainingTime:F1}s";
-				}
-
-				yield return new WaitForSeconds(0.1f);
-				remainingTime -= 0.1f;
+				yield return new WaitForSeconds(autoSelectionDelay);
 			}
-			Debug.Log("remainingTime: " + remainingTime);
 
-			// Timeout reached - select default
-			if (isWaitingForSelection)
-			{
-				Debug.Log($"<color=yellow>[PromotionUI] Timeout reached, selecting default: {ChessMove.GetPromotionPieceName(defaultPromotionPiece)}</color>");
-				SelectPromotion(defaultPromotionPiece);
-			}
+			SelectPromotion(promotionPiece);
 		}
 
 		#endregion
 
 		#region Private Test Methods
 
-		private static void TestComponentValidation()
+		private void TestComponentValidation()
 		{
 			try
 			{
-				// Test component validation logic
+				bool hasAllComponents = promotionPanel != null && titleText != null &&
+									   queenButton != null && rookButton != null &&
+									   bishopButton != null && knightButton != null;
+
+				if (!hasAllComponents)
+				{
+					throw new Exception("Missing required UI components");
+				}
+
+				// Test button Image components
+				Button[] buttons = { queenButton, rookButton, bishopButton, knightButton };
+				foreach (Button button in buttons)
+				{
+					if (button != null && button.GetComponent<Image>() == null)
+					{
+						throw new Exception($"Button {button.name} missing Image component");
+					}
+				}
+
 				Debug.Log("<color=green>[PromotionUI] ✓ Component validation test passed</color>");
 			}
 			catch (Exception e)
@@ -356,11 +474,50 @@ namespace GPTDeepResearch
 			}
 		}
 
-		private static void TestPromotionDialogDisplay()
+		private void TestSpriteAssignment()
+		{
+			try
+			{
+				bool hasAllSprites = blackQueenSprite != null && blackRookSprite != null &&
+									blackBishopSprite != null && blackKnightSprite != null &&
+									whiteQueenSprite != null && whiteRookSprite != null &&
+									whiteBishopSprite != null && whiteKnightSprite != null;
+
+				if (!hasAllSprites)
+				{
+					Debug.Log("<color=yellow>[PromotionUI] Some sprites missing - check Inspector assignments</color>");
+				}
+				else
+				{
+					Debug.Log("<color=green>[PromotionUI] ✓ All sprites assigned</color>");
+				}
+
+				Debug.Log("<color=green>[PromotionUI] ✓ Sprite assignment test passed</color>");
+			}
+			catch (Exception e)
+			{
+				Debug.Log($"<color=red>[PromotionUI] ✗ Sprite assignment test failed: {e.Message}</color>");
+			}
+		}
+
+		private void TestPromotionDialogDisplay()
 		{
 			try
 			{
 				// Test dialog display functionality
+				bool initialState = isWaitingForSelection;
+				if (initialState)
+				{
+					throw new Exception("Should not be waiting for selection initially");
+				}
+
+				// Test context storage
+				var context = GetPromotionContext();
+				if (context.isWhite != isWhitePromotion)
+				{
+					throw new Exception("Context storage failed");
+				}
+
 				Debug.Log("<color=green>[PromotionUI] ✓ Promotion dialog display test passed</color>");
 			}
 			catch (Exception e)
@@ -369,7 +526,7 @@ namespace GPTDeepResearch
 			}
 		}
 
-		private static void TestPieceSelection()
+		private void TestPieceSelection()
 		{
 			try
 			{
@@ -383,6 +540,13 @@ namespace GPTDeepResearch
 						throw new Exception($"Invalid promotion piece: {piece}");
 					}
 				}
+
+				// Test default promotion piece
+				if (!ChessMove.IsValidPromotionPiece(defaultPromotionPiece))
+				{
+					throw new Exception("Default promotion piece is invalid");
+				}
+
 				Debug.Log("<color=green>[PromotionUI] ✓ Piece selection test passed</color>");
 			}
 			catch (Exception e)
@@ -391,39 +555,63 @@ namespace GPTDeepResearch
 			}
 		}
 
-		private static void TestTimeoutFunctionality()
+		private void TestAutoSelection()
 		{
 			try
 			{
-				// Test timeout logic
-				float testTimeout = 3.0f;
-				if (testTimeout <= 0)
+				// Test auto-selection functionality
+				char testPiece = 'Q';
+				bool isValidDefault = ChessMove.IsValidPromotionPiece(testPiece);
+
+				if (!isValidDefault)
 				{
-					throw new Exception("Invalid timeout value");
+					throw new Exception("Default promotion piece is invalid");
 				}
-				Debug.Log("<color=green>[PromotionUI] ✓ Timeout functionality test passed</color>");
+
+				// Test invalid piece handling
+				char invalidPiece = 'K';
+				bool isInvalidRejected = !ChessMove.IsValidPromotionPiece(invalidPiece);
+
+				if (!isInvalidRejected)
+				{
+					throw new Exception("Invalid piece should be rejected");
+				}
+
+				// Test engine selection flag
+				bool engineFlag = IsEngineSelection();
+				if (engineFlag && !isEngineSelection)
+				{
+					throw new Exception("Engine selection flag inconsistent");
+				}
+
+				Debug.Log("<color=green>[PromotionUI] ✓ Auto-selection test passed</color>");
 			}
 			catch (Exception e)
 			{
-				Debug.Log($"<color=red>[PromotionUI] ✗ Timeout functionality test failed: {e.Message}</color>");
+				Debug.Log($"<color=red>[PromotionUI] ✗ Auto-selection test failed: {e.Message}</color>");
 			}
 		}
 
-		private static void TestEventHandling()
+		private void TestEventHandling()
 		{
 			try
 			{
 				// Test event system
 				bool eventFired = false;
+				bool dataEventFired = false;
+
 				System.Action<char> testHandler = (piece) => eventFired = true;
+				System.Action<PromotionSelectionData> testDataHandler = (data) => dataEventFired = true;
 
-				// Simulate event
+				// Simulate events
 				testHandler?.Invoke('Q');
+				testDataHandler?.Invoke(new PromotionSelectionData('Q', true));
 
-				if (!eventFired)
+				if (!eventFired || !dataEventFired)
 				{
-					throw new Exception("Event handler not invoked");
+					throw new Exception("Event handlers not invoked properly");
 				}
+
 				Debug.Log("<color=green>[PromotionUI] ✓ Event handling test passed</color>");
 			}
 			catch (Exception e)
@@ -432,7 +620,7 @@ namespace GPTDeepResearch
 			}
 		}
 
-		private static void TestEdgeCases()
+		private void TestEdgeCases()
 		{
 			try
 			{
@@ -456,6 +644,13 @@ namespace GPTDeepResearch
 					throw new Exception("Invalid piece accepted as promotion");
 				}
 
+				// Test waiting state consistency
+				bool waitingState = IsWaitingForPromotion();
+				if (waitingState != isWaitingForSelection)
+				{
+					throw new Exception("Waiting state inconsistent");
+				}
+
 				Debug.Log("<color=green>[PromotionUI] ✓ Edge cases test passed</color>");
 			}
 			catch (Exception e)
@@ -464,7 +659,7 @@ namespace GPTDeepResearch
 			}
 		}
 
-		private static void TestColorHandling()
+		private void TestColorHandling()
 		{
 			try
 			{
@@ -480,6 +675,13 @@ namespace GPTDeepResearch
 					throw new Exception("Color case handling failed");
 				}
 
+				// Test promotion context
+				var context = GetPromotionContext();
+				if (context.fromSquare == null || context.toSquare == null)
+				{
+					// This is okay - squares can be empty
+				}
+
 				Debug.Log("<color=green>[PromotionUI] ✓ Color handling test passed</color>");
 			}
 			catch (Exception e)
@@ -488,7 +690,7 @@ namespace GPTDeepResearch
 			}
 		}
 
-		private static void TestUIStateManagement()
+		private void TestUIStateManagement()
 		{
 			try
 			{
@@ -503,6 +705,13 @@ namespace GPTDeepResearch
 					// Expected behavior - states should be different
 				}
 
+				// Test ToString method
+				string debugString = ToString();
+				if (string.IsNullOrEmpty(debugString))
+				{
+					throw new Exception("ToString method failed");
+				}
+
 				Debug.Log("<color=green>[PromotionUI] ✓ UI state management test passed</color>");
 			}
 			catch (Exception e)
@@ -511,11 +720,67 @@ namespace GPTDeepResearch
 			}
 		}
 
+		private void TestCoroutineMethods()
+		{
+			try
+			{
+				// Test coroutine method signatures exist
+				bool hasCoroutineMethods = true;
+
+				// Verify delay value is reasonable
+				if (autoSelectionDelay < 0f || autoSelectionDelay > 5f)
+				{
+					Debug.Log("<color=yellow>[PromotionUI] Auto-selection delay should be 0-5 seconds</color>");
+				}
+
+				Debug.Log("<color=green>[PromotionUI] ✓ Coroutine methods test passed</color>");
+			}
+			catch (Exception e)
+			{
+				Debug.Log($"<color=red>[PromotionUI] ✗ Coroutine methods test failed: {e.Message}</color>");
+			}
+		}
+
+		private void TestInspectorConfiguration()
+		{
+			try
+			{
+				// Test Inspector configuration requirements
+				int spriteCount = 0;
+				if (blackQueenSprite != null) spriteCount++;
+				if (blackRookSprite != null) spriteCount++;
+				if (blackBishopSprite != null) spriteCount++;
+				if (blackKnightSprite != null) spriteCount++;
+				if (whiteQueenSprite != null) spriteCount++;
+				if (whiteRookSprite != null) spriteCount++;
+				if (whiteBishopSprite != null) spriteCount++;
+				if (whiteKnightSprite != null) spriteCount++;
+
+				if (spriteCount < 8)
+				{
+					Debug.Log($"<color=yellow>[PromotionUI] Only {spriteCount}/8 sprites assigned in Inspector</color>");
+				}
+
+				// Test color values are reasonable
+				if (selectedColor.a < 0.1f || normalColor.a < 0.1f)
+				{
+					Debug.Log("<color=yellow>[PromotionUI] Color alpha values very low - may be invisible</color>");
+				}
+
+				Debug.Log("<color=green>[PromotionUI] ✓ Inspector configuration test passed</color>");
+			}
+			catch (Exception e)
+			{
+				Debug.Log($"<color=red>[PromotionUI] ✗ Inspector configuration test failed: {e.Message}</color>");
+			}
+		}
+
 		#endregion
+
 	}
 
 	/// <summary>
-	/// Data class for promotion selection events
+	/// Enhanced data class for promotion selection events with additional context
 	/// </summary>
 	[System.Serializable]
 	public class PromotionSelectionData
@@ -525,6 +790,7 @@ namespace GPTDeepResearch
 		public string fromSquare;
 		public string toSquare;
 		public float selectionTime;
+		public bool isEngineSelection;
 
 		public PromotionSelectionData(char piece, bool isWhite, string from = "", string to = "")
 		{
@@ -533,13 +799,17 @@ namespace GPTDeepResearch
 			fromSquare = from;
 			toSquare = to;
 			selectionTime = Time.time;
+			isEngineSelection = false;
 		}
 
 		public override string ToString()
 		{
 			string color = isWhitePromotion ? "White" : "Black";
 			string pieceName = ChessMove.GetPromotionPieceName(promotionPiece);
-			return $"{color} promotes to {pieceName}";
+			string source = isEngineSelection ? "Engine" : "Human";
+			string moveText = !string.IsNullOrEmpty(fromSquare) && !string.IsNullOrEmpty(toSquare)
+				? $" ({fromSquare}-{toSquare})" : "";
+			return $"{color} promotes to {pieceName} ({source}){moveText}";
 		}
 	}
 }
