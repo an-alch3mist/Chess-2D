@@ -1,15 +1,16 @@
 ﻿/*
-CHANGELOG (Enhanced Version with Research-Based Evaluation & FEN-Based Side Management - v0.4):
-- FIXED: Updated evaluation calculation using Lichess research-based equation (Win% = 50 + 50 * (2 / (1 + exp(-0.00368208 * centipawns)) - 1))
-- FIXED: Removed external human/engine side management - now purely FEN-based analysis
-- FIXED: Enhanced UCI promotion parsing with stricter validation based on UCI protocol specification  
-- FIXED: Corrected mate score probability calculation using proper sigmoid scaling
-- IMPROVED: More accurate Elo calculation based on Stockfish testing data
-- IMPROVED: Better FEN validation with comprehensive rank and piece validation
-- IMPROVED: Enhanced error handling and crash detection with better recovery
-- IMPROVED: Optimized centipawn-to-probability conversion for modern NNUE evaluation
-- ADDED: Support for normalized evaluation values in addition to traditional centipawn scores
-- ADDED: Better handling of extreme evaluation values (+/- 3000+ centipawns)
+CHANGELOG (Simplified Analysis Engine - v0.5):
+- REMOVED: Game history management (GameHistoryEntry, GameHistory, undo/redo functionality)
+- REMOVED: Game state coupling - no longer tracks move sequences or maintains board state
+- FIXED: Separated analysis concerns from game state management
+- IMPROVED: Focused purely on position analysis and move evaluation
+- IMPROVED: Cleaner API surface with only analysis-related methods
+- IMPROVED: Better separation of concerns for multi-board scenarios
+- MAINTAINED: Research-based evaluation and FEN-driven analysis
+- MAINTAINED: Comprehensive UCI promotion parsing and validation
+- MAINTAINED: Engine crash detection and recovery capabilities
+- MAINTAINED: Analysis logging for debugging and PGN export
+- ARCHITECTURE: Designed for future ChessBoard integration without tight coupling
 */
 
 using System;
@@ -25,12 +26,13 @@ using UnityEngine;
 using UnityEngine.Events;
 
 using SPACE_UTIL;
-// Script Size: ~52,000 chars 
+// Script Size: ~45,000 chars 
 namespace GPTDeepResearch
 {
 	/// <summary>
-	/// Unity Stockfish bridge with research-based evaluation and FEN-driven analysis.
-	/// Provides non-blocking chess engine communication with comprehensive position analysis.
+	/// Unity Stockfish bridge focused purely on position analysis and move evaluation.
+	/// Provides non-blocking chess engine communication without game state management.
+	/// Designed for multi-board scenarios with clean separation of concerns.
 	/// </summary>
 	public class StockfishBridge : MonoBehaviour
 	{
@@ -45,9 +47,6 @@ namespace GPTDeepResearch
 		[SerializeField] private int evalDepth = 15;
 		[SerializeField] private int defaultElo = 1500;
 		[SerializeField] private int defaultSkillLevel = 8;
-
-		[Header("Game Management")]
-		[SerializeField] private int maxHistorySize = 100;
 
 		// Research-based evaluation constants from Lichess analysis
 		private const float LICHESS_CENTIPAWN_SCALE = 0.00368208f;  // From Lichess accuracy metric research
@@ -154,14 +153,14 @@ namespace GPTDeepResearch
 				// Validate side consistency with rank movement
 				bool isWhiteMove = isValidWhitePromotion;
 				bool isBlackMove = isValidBlackPromotion;
-				
+
 				if (sideToMove == 'w' && !isWhiteMove)
 				{
 					if (StockfishBridge.enableDebugLogging_static)
 						UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Side mismatch: White to move but promotion to black rank: {bestMove}</color>");
 					return;
 				}
-				
+
 				if (sideToMove == 'b' && !isBlackMove)
 				{
 					if (StockfishBridge.enableDebugLogging_static)
@@ -189,21 +188,6 @@ namespace GPTDeepResearch
 			{
 				if (!isPromotion) return "";
 
-				// Convert UCI lowercase to display names
-				/*
-				before : 
-
-				string pieceName = promotionPiece;
-				switch(pieceName)
-				{
-					'q' => "Queen",
-					'r' => "Rook", 
-					'b' => "Bishop",
-					'n' => "Knight",
-					_ => promotionPiece.ToString()
-				};
-
-				*/
 				string pieceName;
 				switch (promotionPiece)
 				{
@@ -213,7 +197,12 @@ namespace GPTDeepResearch
 					case 'r':
 						pieceName = "Rook";
 						break;
-					// ... etc
+					case 'b':
+						pieceName = "Bishop";
+						break;
+					case 'n':
+						pieceName = "Knight";
+						break;
 					default:
 						pieceName = promotionPiece.ToString();
 						break;
@@ -243,68 +232,68 @@ namespace GPTDeepResearch
 			{
 				if (isMateScore)
 				{
-					string winner = mateDistance > 0 ? "Engine" : "Opponent";
+					string winner = mateDistance > 0 ? "White" : "Black";
 					return $"Mate in {Math.Abs(mateDistance)} for {winner}";
 				}
 				else
 				{
 					// Calculate actual win probabilities based on engine evaluation
-					float whiteActualWinProb, blackActualWinProb;
+					float engineActualWinProb, oppoActualWinProb;
 
 					if (centipawnEvaluation >= 0)
 					{
 						// Positive centipawns = good for White
-						whiteActualWinProb = engineSideWinProbability;
-						blackActualWinProb = 1f - engineSideWinProbability;
+						engineActualWinProb = engineSideWinProbability;
+						oppoActualWinProb = 1f - engineSideWinProbability;
 					}
 					else
 					{
 						// Negative centipawns = good for Black
-						whiteActualWinProb = 1f - engineSideWinProbability;
-						blackActualWinProb = engineSideWinProbability;
+						engineActualWinProb = 1f - engineSideWinProbability;
+						oppoActualWinProb = engineSideWinProbability;
 					}
 
-					float whitePercentage = whiteActualWinProb * 100f;
-					float blackPercentage = blackActualWinProb * 100f;
+					float enginePercentage = engineActualWinProb * 100f;
+					float oppoPercentage = oppoActualWinProb * 100f;
 
 					// Show evaluation strength indicator for extreme positions
 					string strengthIndicator = "";
 					if (Math.Abs(centipawnEvaluation) > 500f)
 						strengthIndicator = Math.Abs(centipawnEvaluation) > 1000f ? " (Decisive)" : " (Winning)";
 
-					return $"{strengthIndicator}, Engine: {whitePercentage:F1}% | Opponent: {blackPercentage:F1}%";
+					return $"Engine: {enginePercentage:F1}% | Oppo: {oppoPercentage:F1}%{strengthIndicator}";
 				}
 			}
 
 			#region ToString Implementation
-			// 4. MODIFY: Update ToString() method in ChessAnalysisResult (around line 200)
 			public override string ToString()
 			{
 				var sb = new StringBuilder();
 				sb.AppendLine("ChessAnalysisResult {");
 				sb.AppendLine($"  BestMove:           {SafeString(bestMove)}");
-				sb.AppendLine($"  SideToMove:         {GetSideDisplay()}");
-				sb.AppendLine($"  CurrentFEN:        {SafeString(currentFen)}"); // ADD: Show original FEN
+				sb.AppendLine($"  SideToMove:         {GetSideDisplay()}"); // absolute w/b unlike relative engine/oppo side for evaluation
+				sb.AppendLine($"  CurrentFEN:         {SafeString(currentFen)}");
 
 				// Calculate and display actual win probabilities correctly
-				float engineSideActualWinProb, opponentActualWinProb;
+				float engineActualWinProb, oppoActualWinProb;
 				if (centipawnEvaluation >= 0)
 				{
-					engineSideActualWinProb = engineSideWinProbability;
-					opponentActualWinProb = 1f - engineSideWinProbability;
+					engineActualWinProb = engineSideWinProbability;
+					oppoActualWinProb = 1f - engineSideWinProbability;
 				}
 				else
 				{
-					engineSideActualWinProb = 1f - engineSideWinProbability;
-					opponentActualWinProb = engineSideWinProbability;
+					engineActualWinProb = 1f - engineSideWinProbability;
+					oppoActualWinProb = engineSideWinProbability;
 				}
 
-				sb.AppendLine($"  EngineWinProb:		{engineSideActualWinProb:F4} ({engineSideActualWinProb:P1})"); // MODIFY: Show corrected white probability
-				sb.AppendLine($"  OpponentWinProb:		{opponentActualWinProb:F4} ({opponentActualWinProb:P1})"); // ADD: Show black probability
-				sb.AppendLine($"  STMWinProb:			{sideToMoveWinProbability:F4} ({sideToMoveWinProbability:P1})");
-				sb.AppendLine($"  EvaluationDisplay:	{GetEvaluationDisplay()}");
+				// note: EngineSide is relative it can be either b/w( which is what's inside stm in fen provided)
 
-				// ... rest of toString remains the same
+				sb.AppendLine($"  EngineSideWinProb:       {engineActualWinProb:F4} ({engineActualWinProb:P1})");
+				sb.AppendLine($"  OppoSideWinProb:       {oppoActualWinProb:F4} ({oppoActualWinProb:P1})");
+				sb.AppendLine($"  STMWinProb:         {sideToMoveWinProbability:F4} ({sideToMoveWinProbability:P1})");
+				sb.AppendLine($"  EvaluationDisplay:  {GetEvaluationDisplay()}");
+
 				sb.AppendLine($"  IsGameEnd:          {isGameEnd} (Checkmate: {isCheckmate}, Stalemate: {isStalemate})");
 				sb.AppendLine($"  InCheck:            {inCheck}");
 				sb.AppendLine($"  IsPromotion:        {isPromotion}");
@@ -342,37 +331,38 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Game history entry for undo/redo functionality
+		/// Analysis log entry for debugging and PGN export
 		/// </summary>
 		[System.Serializable]
-		public class GameHistoryEntry
+		public class AnalysisLogEntry
 		{
-			public string fen;                  // Position before the move
-			public ChessMove move;              // The move that was made
-			public string moveNotation;         // Human-readable move notation
-			public float evaluationScore;      // Position evaluation after move
-			public DateTime timestamp;         // When the move was made
+			public string fen;                      // Position that was analyzed
+			public string bestMove;                 // Engine's best move
+			public float evaluation;                // Position evaluation
+			public float analysisTimeMs;            // Time taken for analysis
+			public int depth;                       // Search depth used
+			public DateTime timestamp;              // When analysis was performed
 
-			public GameHistoryEntry(string fen, ChessMove move, string notation, float evaluation)
+			public AnalysisLogEntry(string fen, string bestMove, float evaluation, float analysisTime, int depth)
 			{
 				this.fen = fen;
-				this.move = move;
-				this.moveNotation = notation;
-				this.evaluationScore = evaluation;
+				this.bestMove = bestMove;
+				this.evaluation = evaluation;
+				this.analysisTimeMs = analysisTime;
+				this.depth = depth;
 				this.timestamp = DateTime.Now;
 			}
 
 			public override string ToString()
 			{
-				return $"GameHistoryEntry {{ Move: {moveNotation}, Evaluation: {evaluationScore:F2}, Time: {timestamp:HH:mm:ss} }}";
+				return $"AnalysisLogEntry {{ FEN: {fen?.Substring(0, Math.Min(20, fen?.Length ?? 0))}..., Move: {bestMove}, Eval: {evaluation:F2}, Time: {analysisTimeMs:F1}ms, Depth: {depth} }}";
 			}
 		}
 
 		// Public properties
 		public string LastRawOutput { get; private set; } = "";
 		public ChessAnalysisResult LastAnalysisResult { get; private set; } = new ChessAnalysisResult();
-		public List<GameHistoryEntry> GameHistory { get; private set; } = new List<GameHistoryEntry>();
-		public int CurrentHistoryIndex { get; private set; } = -1;
+		public List<AnalysisLogEntry> AnalysisLog { get; private set; } = new List<AnalysisLogEntry>();
 
 		public bool IsEngineRunning
 		{
@@ -399,7 +389,6 @@ namespace GPTDeepResearch
 
 		// Thread-safe communication
 		private readonly ConcurrentQueue<string> incomingLines = new ConcurrentQueue<string>();
-		private readonly ConcurrentQueue<string> pendingCommands = new ConcurrentQueue<string>();
 
 		// Request tracking
 		private volatile bool waitingForBestMove = false;
@@ -410,7 +399,7 @@ namespace GPTDeepResearch
 		#region Unity Lifecycle
 		private void Awake()
 		{
-			UnityEngine.Debug.Log("<color=green>[StockfishBridge] Awake(): Initializing engine...</color>");
+			UnityEngine.Debug.Log("<color=green>[StockfishBridge] Awake(): Initializing analysis engine...</color>");
 
 			StartEngine();
 			StartCoroutine(InitializeEngineOnAwake());
@@ -467,8 +456,7 @@ namespace GPTDeepResearch
 			sb.AppendLine("StockfishBridge {");
 			sb.AppendLine($"  EngineRunning:      {IsEngineRunning}");
 			sb.AppendLine($"  IsReady:            {IsReady}");
-			sb.AppendLine($"  GameHistorySize:    {GameHistory.Count}");
-			sb.AppendLine($"  CurrentHistIndex:   {CurrentHistoryIndex}");
+			sb.AppendLine($"  AnalysisLogSize:    {AnalysisLog.Count}");
 			sb.AppendLine($"  LastAnalysis:       {(!string.IsNullOrEmpty(LastAnalysisResult.bestMove) ? LastAnalysisResult.bestMove : "None")}");
 			sb.AppendLine($"  Config:             Depth:{defaultDepth}, Elo:{defaultElo}, Skill:{defaultSkillLevel}");
 			sb.Append("}");
@@ -591,7 +579,7 @@ namespace GPTDeepResearch
 		/// - Handles modern NNUE evaluation which is less tied to traditional material values
 		/// 
 		/// SIDE MANAGEMENT:
-		/// - Side determination is purely FEN-based - no external human/engine side state
+		/// - Side determination is purely FEN-based - no external state management
 		/// - Analysis is position-centric, not player-centric
 		/// - Evaluation always returns probabilities for both white and side-to-move perspectives
 		/// 
@@ -696,6 +684,10 @@ namespace GPTDeepResearch
 			LastAnalysisResult.analysisTimeMs = (Time.time - startTime) * 1000f;
 			ParseAnalysisResult(LastRawOutput, actualSearchDepth, enableEvaluation ? actualEvalDepth : -1);
 
+			// Add to analysis log
+			AddToAnalysisLog(fen, LastAnalysisResult.bestMove, LastAnalysisResult.centipawnEvaluation,
+							LastAnalysisResult.analysisTimeMs, actualSearchDepth);
+
 			// Fire completion event
 			OnAnalysisComplete?.Invoke(LastAnalysisResult);
 
@@ -707,135 +699,70 @@ namespace GPTDeepResearch
 
 		#endregion
 
-		#region Public API - Game Management
+		#region Public API - Logging and Export
 
 		/// <summary>
-		/// Add move to game history
+		/// Add entry to analysis log for debugging and export
 		/// </summary>
-		public void AddMoveToHistory(string fen, ChessMove move, string notation, float evaluation)
+		private void AddToAnalysisLog(string fen, string bestMove, float evaluation, float analysisTime, int depth)
 		{
-			// Truncate history if we're not at the end (redo path was taken)
-			if (CurrentHistoryIndex < GameHistory.Count - 1)
-			{
-				int removeCount = GameHistory.Count - CurrentHistoryIndex - 1;
-				GameHistory.RemoveRange(CurrentHistoryIndex + 1, removeCount);
-			}
+			var entry = new AnalysisLogEntry(fen, bestMove, evaluation, analysisTime, depth);
+			AnalysisLog.Add(entry);
 
-			// Add new entry
-			GameHistoryEntry entry = new GameHistoryEntry(fen, move, notation, evaluation);
-			GameHistory.Add(entry);
-			CurrentHistoryIndex = GameHistory.Count - 1;
-
-			// Limit history size
-			if (GameHistory.Count > maxHistorySize)
+			// Limit log size to prevent memory issues
+			const int maxLogSize = 1000;
+			if (AnalysisLog.Count > maxLogSize)
 			{
-				GameHistory.RemoveAt(0);
-				CurrentHistoryIndex--;
+				AnalysisLog.RemoveAt(0);
 			}
 
 			if (enableDebugLogging)
 			{
-				UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Added to history: {notation} (Index: {CurrentHistoryIndex})</color>");
+				UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Logged analysis: {entry}</color>");
 			}
 		}
 
 		/// <summary>
-		/// Undo last move
+		/// Clear analysis log
 		/// </summary>
-		public GameHistoryEntry UndoMove()
+		public void ClearAnalysisLog()
 		{
-			if (CurrentHistoryIndex >= 0 && CurrentHistoryIndex < GameHistory.Count)
-			{
-				GameHistoryEntry entry = GameHistory[CurrentHistoryIndex];
-				CurrentHistoryIndex--;
-
-				if (enableDebugLogging)
-				{
-					UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Undoing move: {entry.moveNotation} (New index: {CurrentHistoryIndex})</color>");
-				}
-
-				return entry;
-			}
-
-			return null;
-		}
-
-		/// <summary>
-		/// Redo next move
-		/// </summary>
-		public GameHistoryEntry RedoMove()
-		{
-			if (CurrentHistoryIndex + 1 < GameHistory.Count)
-			{
-				CurrentHistoryIndex++;
-				GameHistoryEntry entry = GameHistory[CurrentHistoryIndex];
-
-				if (enableDebugLogging)
-				{
-					UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Redoing move: {entry.moveNotation} (Index: {CurrentHistoryIndex})</color>");
-				}
-
-				return entry;
-			}
-
-			return null;
-		}
-
-		/// <summary>
-		/// Check if undo is possible
-		/// </summary>
-		public bool CanUndo()
-		{
-			return CurrentHistoryIndex >= 0;
-		}
-
-		/// <summary>
-		/// Check if redo is possible
-		/// </summary>
-		public bool CanRedo()
-		{
-			return CurrentHistoryIndex + 1 < GameHistory.Count;
-		}
-
-		/// <summary>
-		/// Clear game history
-		/// </summary>
-		public void ClearHistory()
-		{
-			GameHistory.Clear();
-			CurrentHistoryIndex = -1;
+			AnalysisLog.Clear();
 
 			if (enableDebugLogging)
 			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] Game history cleared</color>");
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] Analysis log cleared</color>");
 			}
 		}
 
 		/// <summary>
-		/// Get current game history as PGN-style notation
+		/// Export analysis log as formatted string for debugging or PGN generation
 		/// </summary>
-		public string GetGameHistoryPGN()
+		public string ExportAnalysisLog()
 		{
-			if (GameHistory.Count == 0)
-				return "No moves played";
+			if (AnalysisLog.Count == 0)
+				return "No analysis data available";
 
-			StringBuilder pgn = new StringBuilder();
-			for (int i = 0; i < GameHistory.Count; i++)
+			var sb = new StringBuilder();
+			sb.AppendLine("StockfishBridge Analysis Log");
+			sb.AppendLine("===========================");
+			sb.AppendLine($"Total Analyses: {AnalysisLog.Count}");
+			sb.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+			sb.AppendLine();
+
+			foreach (var entry in AnalysisLog)
 			{
-				GameHistoryEntry entry = GameHistory[i];
-
-				if (i % 2 == 0) // White move
-				{
-					pgn.Append($"{(i / 2) + 1}. {entry.moveNotation} ");
-				}
-				else // Black move
-				{
-					pgn.Append($"{entry.moveNotation} ");
-				}
+				sb.AppendLine($"Position: {entry.fen}");
+				sb.AppendLine($"Best Move: {entry.bestMove}");
+				sb.AppendLine($"Evaluation: {entry.evaluation:F2}cp");
+				sb.AppendLine($"Depth: {entry.depth}, Time: {entry.analysisTimeMs:F1}ms");
+				sb.AppendLine($"Timestamp: {entry.timestamp:HH:mm:ss}");
+				sb.AppendLine();
 			}
 
-			return pgn.ToString().Trim();
+			return sb.ToString();
 		}
+
 		#endregion
 
 		#region Public API - Utilities
@@ -1349,7 +1276,7 @@ namespace GPTDeepResearch
 			if (string.IsNullOrEmpty(bestInfoLine))
 			{
 				// No evaluation found, use neutral
-				LastAnalysisResult.engineSideWinProbability = 0.5f; // MODIFY: Use new field name
+				LastAnalysisResult.engineSideWinProbability = 0.5f;
 				LastAnalysisResult.sideToMoveWinProbability = 0.5f;
 				return;
 			}
@@ -1361,18 +1288,18 @@ namespace GPTDeepResearch
 				// Mate score with high confidence
 				LastAnalysisResult.isMateScore = true;
 				LastAnalysisResult.mateDistance = mateDistance;
-				LastAnalysisResult.engineSideWinProbability = ConvertMateToWinProbability(mateDistance); // MODIFY: Use new field name
+				LastAnalysisResult.engineSideWinProbability = ConvertMateToWinProbability(mateDistance);
 			}
 			else if (!float.IsNaN(centipawns))
 			{
 				// Research-based centipawn to probability conversion
 				LastAnalysisResult.centipawnEvaluation = centipawns;
-				LastAnalysisResult.engineSideWinProbability = ConvertCentipawnsToWinProbabilityResearch(centipawns); // MODIFY: Use new field name
+				LastAnalysisResult.engineSideWinProbability = ConvertCentipawnsToWinProbabilityResearch(centipawns);
 			}
 			else
 			{
 				// Fallback neutral
-				LastAnalysisResult.engineSideWinProbability = 0.5f; // MODIFY: Use new field name
+				LastAnalysisResult.engineSideWinProbability = 0.5f;
 			}
 
 			// Calculate side-to-move probability based on FEN
@@ -1404,7 +1331,7 @@ namespace GPTDeepResearch
 			}
 
 			// Clamp probabilities to reasonable ranges
-			LastAnalysisResult.engineSideWinProbability = Mathf.Clamp(LastAnalysisResult.engineSideWinProbability, 0.001f, 0.999f); // MODIFY: Use new field name
+			LastAnalysisResult.engineSideWinProbability = Mathf.Clamp(LastAnalysisResult.engineSideWinProbability, 0.001f, 0.999f);
 			LastAnalysisResult.sideToMoveWinProbability = Mathf.Clamp(LastAnalysisResult.sideToMoveWinProbability, 0.001f, 0.999f);
 		}
 
@@ -1574,7 +1501,7 @@ namespace GPTDeepResearch
 			// Apply Lichess research-based equation
 			float exponent = -LICHESS_CENTIPAWN_SCALE * centipawns;
 			float winPercentage = 50f + 50f * (2f / (1f + Mathf.Exp(exponent)) - 1f);
-			
+
 			// Convert percentage to probability (0-1 range)
 			return winPercentage / 100f;
 		}
@@ -1887,7 +1814,7 @@ namespace GPTDeepResearch
 			{
 				char extractedSide = ExtractSideFromFen(fen);
 				string validation = ValidateFen(fen);
-				
+
 				if (string.IsNullOrEmpty(validation))
 				{
 					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ FEN valid, side: {extractedSide} | {fen.Substring(0, Math.Min(30, fen.Length))}...</color>");
@@ -1896,67 +1823,6 @@ namespace GPTDeepResearch
 				{
 					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ FEN invalid: {validation}</color>");
 				}
-			}
-		}
-
-		/// <summary>
-		/// Test game history management
-		/// </summary>
-		private void TestGameHistoryManagement()
-		{
-			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing game history management...</color>");
-
-			ClearHistory();
-
-			// Test adding moves to history
-			ChessBoard testBoard = new ChessBoard();
-			ChessMove move1 = ChessMove.FromUCI("e2e4", testBoard);
-			AddMoveToHistory("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", move1, "e4", 0.3f);
-
-			if (GameHistory.Count == 1 && CurrentHistoryIndex == 0)
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Move added to history correctly</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Move history addition failed</color>");
-			}
-
-			// Test undo
-			var undoEntry = UndoMove();
-			if (undoEntry != null && CurrentHistoryIndex == -1)
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Undo functionality works</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Undo functionality failed</color>");
-			}
-
-			// Test redo
-			var redoEntry = RedoMove();
-			if (redoEntry != null && CurrentHistoryIndex == 0)
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Redo functionality works</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Redo functionality failed</color>");
-			}
-
-			// Test history limits
-			for (int i = 0; i < maxHistorySize + 5; i++)
-			{
-				AddMoveToHistory($"test-fen-{i}", move1, $"move{i}", 0f);
-			}
-
-			if (GameHistory.Count <= maxHistorySize)
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ History size limit enforced</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ History size limit not enforced</color>");
 			}
 		}
 
@@ -2055,81 +1921,59 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Test enhanced promotion detection and parsing
+		/// Test analysis logging functionality
 		/// </summary>
-		private void TestPromotionDetection()
+		private void TestAnalysisLogging()
 		{
-			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing enhanced promotion detection...</color>");
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing analysis logging...</color>");
 
-			// Test valid UCI promotion moves
-			string[] promotionMoves = { "e7e8q", "e7e8r", "e7e8b", "e7e8n", "a2a1q", "h7h8n", "d7c8q", "f2g1r" };
-			char[] expectedPieces = { 'q', 'r', 'b', 'n', 'q', 'n', 'q', 'r' };
-			char[] expectedSides = { 'w', 'w', 'w', 'w', 'b', 'w', 'w', 'b' };
+			ClearAnalysisLog();
 
-			for (int i = 0; i < promotionMoves.Length; i++)
+			// Add test entries
+			AddToAnalysisLog("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "e2e4", 25f, 1500f, 12);
+			AddToAnalysisLog("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2", "Nf3", -15f, 1200f, 10);
+
+			if (AnalysisLog.Count == 2)
 			{
-				ChessAnalysisResult result = new ChessAnalysisResult();
-				result.bestMove = promotionMoves[i];
-				result.sideToMove = expectedSides[i];
-				result.ParsePromotionData();
-
-				if (result.isPromotion && result.promotionPiece == expectedPieces[i])
-				{
-					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Promotion detected: {promotionMoves[i]} -> {result.GetPromotionDescription()}</color>");
-				}
-				else
-				{
-					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Promotion detection failed: {promotionMoves[i]} (expected {expectedPieces[i]}, got {result.promotionPiece})</color>");
-				}
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Analysis log entries added correctly</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Analysis log count incorrect</color>");
 			}
 
-			// Test invalid promotion attempts
-			string[] invalidPromotions = { "e2e4", "e7e8Q", "e7e8k", "e6e7q", "e3e4q" }; // Wrong format, uppercase, invalid piece, wrong ranks
-
-			foreach (string move in invalidPromotions)
+			// Test export
+			string exportedLog = ExportAnalysisLog();
+			if (exportedLog.Contains("Total Analyses: 2"))
 			{
-				ChessAnalysisResult result = new ChessAnalysisResult();
-				result.bestMove = move;
-				result.sideToMove = 'w';
-				result.ParsePromotionData();
-
-				if (!result.isPromotion)
-				{
-					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Invalid promotion correctly rejected: {move}</color>");
-				}
-				else
-				{
-					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Invalid promotion incorrectly accepted: {move}</color>");
-				}
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Analysis log export successful</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Analysis log export failed</color>");
 			}
 
-			// Test non-promotion moves
-			string[] normalMoves = { "e2e4", "Nf3", "O-O", "Qh5", "d2d4", "g1f3" };
-
-			foreach (string move in normalMoves)
+			// Test clear
+			ClearAnalysisLog();
+			if (AnalysisLog.Count == 0)
 			{
-				ChessAnalysisResult result = new ChessAnalysisResult();
-				result.bestMove = move;
-				result.ParsePromotionData();
-
-				if (!result.isPromotion)
-				{
-					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Non-promotion correctly identified: {move}</color>");
-				}
-				else
-				{
-					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ False promotion detected: {move}</color>");
-				}
+				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Analysis log cleared successfully</color>");
+			}
+			else
+			{
+				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Analysis log clear failed</color>");
 			}
 		}
 
-		private IEnumerator RunCoroutineTests()
+		/// <summary>
+		/// Test comprehensive position analysis
+		/// </summary>
+		private IEnumerator TestPositionAnalysis()
 		{
-			yield return new WaitForSeconds(0.1f);
-			
-			// Test comprehensive position analysis
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing position analysis...</color>");
+
 			string[] testPositions = {
-				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
 				"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1"
 			};
 
@@ -2151,25 +1995,30 @@ namespace GPTDeepResearch
 		#endregion
 
 		/// <summary>
-		/// Run all StockfishBridge comprehensive tests with research-based improvements
+		/// Run all StockfishBridge comprehensive tests for analysis-focused engine
 		/// </summary>
 		public void RunAllTests()
 		{
-			UnityEngine.Debug.Log("<color=cyan>=== StockfishBridge Research-Based Test Suite v0.4 ===</color>");
+			UnityEngine.Debug.Log("<color=cyan>=== StockfishBridge Analysis Engine Test Suite v0.5 ===</color>");
 
 			TestPromotionParsing();
 			TestEloCalculation();
 			TestEvaluationCalculation();
 			TestFENBasedAnalysis();
-			TestGameHistoryManagement();
 			TestEngineRestart();
 			TestFENValidation();
-			TestPromotionDetection();
+			TestAnalysisLogging();
 
 			// Start coroutine tests
 			StartCoroutine(RunCoroutineTests());
 
 			UnityEngine.Debug.Log("<color=cyan>=== StockfishBridge Tests Completed ===</color>");
+		}
+
+		private IEnumerator RunCoroutineTests()
+		{
+			yield return new WaitForSeconds(0.1f);
+			yield return StartCoroutine(TestPositionAnalysis());
 		}
 	}
 }
