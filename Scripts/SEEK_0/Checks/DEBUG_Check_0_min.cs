@@ -19,6 +19,7 @@ namespace GPTDeepResearch
 			}
 		}
 
+		[SerializeField] private StockfishBridge stockfishBridge;
 		IEnumerator STIMULATE()
 		{
 			#region frame_rate
@@ -31,7 +32,6 @@ namespace GPTDeepResearch
 			Debug.Log(stockfishBridge.LastAnalysisResult);
 		}
 
-		[SerializeField] private StockfishBridge stockfishBridge;
 		//
 
 	}
