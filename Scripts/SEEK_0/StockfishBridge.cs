@@ -215,17 +215,6 @@ namespace GPTDeepResearch
 			}
 
 			/// <summary>
-			/// Convert to ChessMove object for game application
-			/// </summary>
-			public ChessMove ToChessMove(ChessBoard board)
-			{
-				if (string.IsNullOrEmpty(bestMove) || bestMove.StartsWith("ERROR") || isGameEnd)
-					return ChessMove.Invalid();
-
-				return ChessMove.FromUCI(bestMove, board);
-			}
-
-			/// <summary>
 			/// Get evaluation as percentage string for UI display with research-based formatting
 			/// </summary>
 			public string GetEvaluationDisplay()
