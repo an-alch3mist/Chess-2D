@@ -26,7 +26,7 @@ namespace GPTDeepResearch
 			yield return null;
 			#endregion
 
-			yield return stockfishBridge.AnalyzePositionCoroutine("8/8/8/8/8/8/k1K4p/8 b - - 0 0");
+			yield return stockfishBridge.AnalyzePositionCoroutine("8/8/8/8/8/8/k1K4p/8 w - - 0 0");
 			Debug.Log(stockfishBridge.LastAnalysisResult);
 			
 		}

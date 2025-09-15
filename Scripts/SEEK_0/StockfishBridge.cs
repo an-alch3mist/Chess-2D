@@ -248,15 +248,18 @@ namespace GPTDeepResearch
 				}
 				else
 				{
-					float percentage = sideToMoveWinProbability * 100f;
-					string sideText = sideToMove == 'w' ? "White" : "Black";
-					
+					// Always use whiteWinProbability as the base since engine reports from white's perspective
+					float whitePercentage = whiteWinProbability * 100f;
+					float blackPercentage = (1f - whiteWinProbability) * 100f;
+
 					// Show evaluation strength indicator for extreme positions
 					string strengthIndicator = "";
 					if (Math.Abs(centipawnEvaluation) > 500f)
 						strengthIndicator = Math.Abs(centipawnEvaluation) > 1000f ? " (Decisive)" : " (Winning)";
-					
-					return $"{sideText}: {percentage:F1}%{strengthIndicator}";
+
+					// Close to equal, show both
+					return $"{strengthIndicator}, White: {whitePercentage:F1}% | Black: {blackPercentage:F1}%";
+
 				}
 			}
 

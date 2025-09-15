@@ -391,13 +391,11 @@ MonoBehaviour:
   defaultTimeoutMs: 20000
   enableDebugLogging: 0
   enableEvaluation: 1
-  defaultDepth: 10
+  defaultDepth: 12
   evalDepth: 15
   defaultElo: 1500
   defaultSkillLevel: 8
-  allowPlayerSideSelection: 1
   maxHistorySize: 100
-  initialHumanSide: 119
   OnEngineLine:
     m_PersistentCalls:
       m_Calls: []
