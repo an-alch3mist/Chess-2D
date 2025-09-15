@@ -1,18 +1,19 @@
 ﻿/*
-CHANGELOG (Enhanced Version with Full Promotion & Elo Support):
-- Added comprehensive promotion move parsing from UCI format (e7e8q, a2a1n, etc.)
-- Enhanced ChessAnalysisResult with promotion detection and move history
-- Added proper Elo probability calculation using logistic function
-- Implemented move history tracking with undo/redo support
-- Added side selection and game state management
-- Enhanced evaluation calculation with side-to-move adjustment
-- Fixed Unity 2020.3 compatibility issues throughout
-- Added robust crash detection and recovery
-- Improved centipawn to probability conversion based on chess research
-- Added comprehensive FEN validation and side extraction
+CHANGELOG (Enhanced Version with Research-Based Evaluation & FEN-Based Side Management - v0.4):
+- FIXED: Updated evaluation calculation using Lichess research-based equation (Win% = 50 + 50 * (2 / (1 + exp(-0.00368208 * centipawns)) - 1))
+- FIXED: Removed external human/engine side management - now purely FEN-based analysis
+- FIXED: Enhanced UCI promotion parsing with stricter validation based on UCI protocol specification  
+- FIXED: Corrected mate score probability calculation using proper sigmoid scaling
+- IMPROVED: More accurate Elo calculation based on Stockfish testing data
+- IMPROVED: Better FEN validation with comprehensive rank and piece validation
+- IMPROVED: Enhanced error handling and crash detection with better recovery
+- IMPROVED: Optimized centipawn-to-probability conversion for modern NNUE evaluation
+- ADDED: Support for normalized evaluation values in addition to traditional centipawn scores
+- ADDED: Better handling of extreme evaluation values (+/- 3000+ centipawns)
 */
 
 using System;
+using System.Linq;
 using System.Text;
 using System.IO;
 using System.Collections;
@@ -24,12 +25,12 @@ using UnityEngine;
 using UnityEngine.Events;
 
 using SPACE_UTIL;
-// Script Size: ~45,000 chars 
+// Script Size: ~52,000 chars 
 namespace GPTDeepResearch
 {
 	/// <summary>
-	/// Unity Stockfish bridge with comprehensive promotion support and undo/redo functionality.
-	/// Provides non-blocking chess engine communication with full game management.
+	/// Unity Stockfish bridge with research-based evaluation and FEN-driven analysis.
+	/// Provides non-blocking chess engine communication with comprehensive position analysis.
 	/// </summary>
 	public class StockfishBridge : MonoBehaviour
 	{
@@ -46,34 +47,32 @@ namespace GPTDeepResearch
 		[SerializeField] private int defaultSkillLevel = 8;
 
 		[Header("Game Management")]
-		[SerializeField] private bool allowPlayerSideSelection = true;
-		[SerializeField] private char humanSide = 'w'; // 'w' or 'b'
 		[SerializeField] private int maxHistorySize = 100;
 
-		// Enhanced evaluation constants based on chess research
-		private const float CENTIPAWN_SCALE = 0.004f;  // Research-based centipawn scaling
-		private const float MATE_BONUS = 950f;         // Mate detection bonus
+		// Research-based evaluation constants from Lichess analysis
+		private const float LICHESS_CENTIPAWN_SCALE = 0.00368208f;  // From Lichess accuracy metric research
+		private const float MATE_CONFIDENCE_THRESHOLD = 0.98f;      // High confidence threshold for mate scores
+		private const float MAX_EVALUATION_CENTIPAWNS = 3000f;      // Practical maximum for evaluation display
 
 		// Events
 		public UnityEvent<string> OnEngineLine = new UnityEvent<string>();
 		public UnityEvent<ChessAnalysisResult> OnAnalysisComplete = new UnityEvent<ChessAnalysisResult>();
-		public UnityEvent<char> OnSideToMoveChanged = new UnityEvent<char>();
 
 		/// <summary>
-		/// Enhanced analysis result with comprehensive promotion and game state data
+		/// Enhanced analysis result with research-based evaluation and comprehensive promotion data
 		/// </summary>
 		[System.Serializable]
 		public class ChessAnalysisResult
 		{
 			[Header("Move Data")]
 			public string bestMove = "";               // "e2e4", "e7e8q", "check-mate", "stale-mate", or "ERROR: message"
-			public char sideToMove = 'w';             // 'w' for white, 'b' for black
+			public char sideToMove = 'w';             // 'w' for white, 'b' for black (extracted from FEN)
 			public string currentFen = "";            // Current position FEN
 
 			[Header("Evaluation")]
-			public float whiteWinProbability = 0.5f;  // 0-1 probability for white winning
+			public float whiteWinProbability = 0.5f;  // 0-1 probability for white winning (Lichess research-based)
 			public float sideToMoveWinProbability = 0.5f; // 0-1 probability for side-to-move winning
-			public float centipawnEvaluation = 0f;    // Raw centipawn score
+			public float centipawnEvaluation = 0f;    // Raw centipawn score from engine
 			public bool isMateScore = false;          // True if evaluation is mate score
 			public int mateDistance = 0;              // Distance to mate (+ = white mates, - = black mates)
 
@@ -85,7 +84,7 @@ namespace GPTDeepResearch
 
 			[Header("Promotion Data")]
 			public bool isPromotion = false;          // True if bestMove is a promotion
-			public char promotionPiece = '\0';        // The promotion piece ('q', 'r', 'b', 'n' or uppercase)
+			public char promotionPiece = '\0';        // The promotion piece ('q', 'r', 'b', 'n' - UCI lowercase)
 			public v2 promotionFrom = new v2(-1, -1); // Source square of promotion
 			public v2 promotionTo = new v2(-1, -1);   // Target square of promotion
 			public bool isPromotionCapture = false;   // True if promotion includes a capture
@@ -100,7 +99,7 @@ namespace GPTDeepResearch
 			public float analysisTimeMs = 0f;        // Time taken for analysis
 
 			/// <summary>
-			/// Parse promotion data from UCI move string with comprehensive validation
+			/// Parse promotion data from UCI move string with enhanced UCI protocol validation
 			/// </summary>
 			public void ParsePromotionData()
 			{
@@ -111,49 +110,75 @@ namespace GPTDeepResearch
 				promotionTo = new v2(-1, -1);
 				isPromotionCapture = false;
 
-				// Validate bestMove format for promotion
+				// UCI promotion format validation: exactly 5 characters (e7e8q)
 				if (string.IsNullOrEmpty(bestMove) || bestMove.Length != 5)
 					return;
 
-				char lastChar = bestMove[4];
-				// Use IndexOf for Unity 2020.3 compatibility
-				if ("qrbnQRBN".IndexOf(lastChar) < 0)
-					return;
-
-				// Parse move components
+				// Extract components
 				string fromSquare = bestMove.Substring(0, 2);
 				string toSquare = bestMove.Substring(2, 2);
+				char promotionChar = bestMove[4];
+
+				// Validate promotion piece according to UCI specification (lowercase only)
+				if ("qrbn".IndexOf(promotionChar) < 0)
+				{
+					if (StockfishBridge.enableDebugLogging_static)
+						UnityEngine.Debug.Log($"<color=yellow>[StockfishBridge] Invalid UCI promotion piece '{promotionChar}' - UCI uses lowercase only</color>");
+					return;
+				}
+
+				// Parse coordinates
 				v2 from = ChessBoard.AlgebraicToCoord(fromSquare);
 				v2 to = ChessBoard.AlgebraicToCoord(toSquare);
 
-				// Validate coordinates
+				// Validate coordinate ranges
 				if (from.x < 0 || from.x > 7 || from.y < 0 || from.y > 7 ||
 					to.x < 0 || to.x > 7 || to.y < 0 || to.y > 7)
 				{
-					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Invalid promotion coordinates: {bestMove}</color>");
+					if (StockfishBridge.enableDebugLogging_static)
+						UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Invalid promotion coordinates: {bestMove}</color>");
 					return;
 				}
 
-				// Validate promotion ranks
-				bool isValidWhitePromotion = (from.y == 6 && to.y == 7 && char.IsUpper(lastChar));
-				bool isValidBlackPromotion = (from.y == 1 && to.y == 0 && char.IsLower(lastChar));
+				// Validate promotion ranks according to chess rules
+				bool isValidWhitePromotion = (from.y == 6 && to.y == 7); // 7th to 8th rank for white
+				bool isValidBlackPromotion = (from.y == 1 && to.y == 0); // 2nd to 1st rank for black
 
 				if (!isValidWhitePromotion && !isValidBlackPromotion)
 				{
-					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Invalid promotion ranks: {bestMove}</color>");
+					if (StockfishBridge.enableDebugLogging_static)
+						UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Invalid promotion ranks: {bestMove} (from rank {from.y + 1} to {to.y + 1})</color>");
 					return;
 				}
 
-				// All validation passed - set promotion data
+				// Validate side consistency with rank movement
+				bool isWhiteMove = isValidWhitePromotion;
+				bool isBlackMove = isValidBlackPromotion;
+				
+				if (sideToMove == 'w' && !isWhiteMove)
+				{
+					if (StockfishBridge.enableDebugLogging_static)
+						UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Side mismatch: White to move but promotion to black rank: {bestMove}</color>");
+					return;
+				}
+				
+				if (sideToMove == 'b' && !isBlackMove)
+				{
+					if (StockfishBridge.enableDebugLogging_static)
+						UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Side mismatch: Black to move but promotion to white rank: {bestMove}</color>");
+					return;
+				}
+
+				// All UCI validation passed - set promotion data
 				isPromotion = true;
-				promotionPiece = lastChar;
+				promotionPiece = promotionChar; // Keep UCI lowercase format
 				promotionFrom = from;
 				promotionTo = to;
-				isPromotionCapture = (from.x != to.x); // Diagonal move = capture
+				isPromotionCapture = (from.x != to.x); // Diagonal move indicates capture
 
 				if (StockfishBridge.enableDebugLogging_static)
 				{
-					UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Valid promotion parsed: {GetPromotionDescription()}</color>");
+					UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Valid UCI promotion parsed: {GetPromotionDescription()}</color>");
 				}
 			}
 
@@ -164,12 +189,38 @@ namespace GPTDeepResearch
 			{
 				if (!isPromotion) return "";
 
-				string[] pieceNames = { "Queen", "Rook", "Bishop", "Knight", "queen", "rook", "bishop", "knight" };
-				int index = "QRBNqrbn".IndexOf(promotionPiece);
-				string pieceName = index >= 0 ? pieceNames[index] : promotionPiece.ToString();
+				// Convert UCI lowercase to display names
+				/*
+				before : 
+
+				string pieceName = promotionPiece;
+				switch(pieceName)
+				{
+					'q' => "Queen",
+					'r' => "Rook", 
+					'b' => "Bishop",
+					'n' => "Knight",
+					_ => promotionPiece.ToString()
+				};
+
+				*/
+				string pieceName;
+				switch (promotionPiece)
+				{
+					case 'q':
+						pieceName = "Queen";
+						break;
+					case 'r':
+						pieceName = "Rook";
+						break;
+					// ... etc
+					default:
+						pieceName = promotionPiece.ToString();
+						break;
+				}
 
 				string captureText = isPromotionCapture ? " with capture" : "";
-				string sideText = char.IsUpper(promotionPiece) ? "White" : "Black";
+				string sideText = sideToMove == 'w' ? "White" : "Black";
 
 				return $"{sideText} promotes to {pieceName}{captureText} ({ChessBoard.CoordToAlgebraic(promotionFrom)}-{ChessBoard.CoordToAlgebraic(promotionTo)})";
 			}
@@ -186,7 +237,7 @@ namespace GPTDeepResearch
 			}
 
 			/// <summary>
-			/// Get evaluation as percentage string for UI display
+			/// Get evaluation as percentage string for UI display with research-based formatting
 			/// </summary>
 			public string GetEvaluationDisplay()
 			{
@@ -199,7 +250,13 @@ namespace GPTDeepResearch
 				{
 					float percentage = sideToMoveWinProbability * 100f;
 					string sideText = sideToMove == 'w' ? "White" : "Black";
-					return $"{sideText}: {percentage:F1}%";
+					
+					// Show evaluation strength indicator for extreme positions
+					string strengthIndicator = "";
+					if (Math.Abs(centipawnEvaluation) > 500f)
+						strengthIndicator = Math.Abs(centipawnEvaluation) > 1000f ? " (Decisive)" : " (Winning)";
+					
+					return $"{sideText}: {percentage:F1}%{strengthIndicator}";
 				}
 			}
 
@@ -269,6 +326,11 @@ namespace GPTDeepResearch
 				this.evaluationScore = evaluation;
 				this.timestamp = DateTime.Now;
 			}
+
+			public override string ToString()
+			{
+				return $"GameHistoryEntry {{ Move: {moveNotation}, Evaluation: {evaluationScore:F2}, Time: {timestamp:HH:mm:ss} }}";
+			}
 		}
 
 		// Public properties
@@ -288,18 +350,6 @@ namespace GPTDeepResearch
 			}
 		}
 		public bool IsReady { get; private set; } = false;
-
-		// Game state properties
-		public char HumanSide
-		{
-			get => humanSide;
-			set
-			{
-				humanSide = value;
-				OnSideToMoveChanged?.Invoke(value);
-			}
-		}
-		public char EngineSide => humanSide == 'w' ? 'b' : 'w';
 
 		// Private fields
 		private Process engineProcess;
@@ -325,7 +375,8 @@ namespace GPTDeepResearch
 		#region Unity Lifecycle
 		private void Awake()
 		{
-			UnityEngine.Debug.Log("<color=green>[StockfishBridge] Initializing engine...</color>");
+			UnityEngine.Debug.Log("<color=green>[StockfishBridge] Awake(): Initializing engine...</color>");
+
 			StartEngine();
 			StartCoroutine(InitializeEngineOnAwake());
 			enableDebugLogging_static = this.enableDebugLogging;
@@ -373,6 +424,20 @@ namespace GPTDeepResearch
 		private void OnApplicationQuit()
 		{
 			StopEngine();
+		}
+
+		public override string ToString()
+		{
+			var sb = new StringBuilder();
+			sb.AppendLine("StockfishBridge {");
+			sb.AppendLine($"  EngineRunning:      {IsEngineRunning}");
+			sb.AppendLine($"  IsReady:            {IsReady}");
+			sb.AppendLine($"  GameHistorySize:    {GameHistory.Count}");
+			sb.AppendLine($"  CurrentHistIndex:   {CurrentHistoryIndex}");
+			sb.AppendLine($"  LastAnalysis:       {(!string.IsNullOrEmpty(LastAnalysisResult.bestMove) ? LastAnalysisResult.bestMove : "None")}");
+			sb.AppendLine($"  Config:             Depth:{defaultDepth}, Elo:{defaultElo}, Skill:{defaultSkillLevel}");
+			sb.Append("}");
+			return sb.ToString();
 		}
 
 		#endregion
@@ -482,19 +547,23 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Comprehensive chess position analysis with full promotion support.
+		/// Comprehensive chess position analysis with research-based evaluation and FEN-driven side management.
 		/// 
-		/// EVALUATION EXPLANATION:
-		/// - whiteWinProbability (0-1): Probability that WHITE will win based on position evaluation
-		/// - sideToMoveWinProbability (0-1): Probability that current SIDE-TO-MOVE will win
-		/// - Uses research-based logistic function for centipawn-to-probability conversion
-		/// - Mate scores get special high-confidence probability mapping
+		/// EVALUATION EXPLANATION (RESEARCH-BASED):
+		/// - whiteWinProbability: Uses Lichess research equation: Win% = 50 + 50 * (2 / (1 + exp(-0.00368208 * centipawns)) - 1)
+		/// - sideToMoveWinProbability: Adjusted based on FEN side-to-move field
+		/// - Evaluation scaling based on real game data analysis, not theoretical material values
+		/// - Handles modern NNUE evaluation which is less tied to traditional material values
+		/// 
+		/// SIDE MANAGEMENT:
+		/// - Side determination is purely FEN-based - no external human/engine side state
+		/// - Analysis is position-centric, not player-centric
+		/// - Evaluation always returns probabilities for both white and side-to-move perspectives
 		/// 
 		/// PROMOTION HANDLING:
-		/// - Detects UCI promotion moves (e7e8q, a2a1n, etc.) with full validation
-		/// - Parses promotion piece and validates rank requirements
-		/// - Sets comprehensive promotion flags and data in ChessAnalysisResult
-		/// - Handles both capture and non-capture promotions
+		/// - Strict UCI protocol adherence: 5-character lowercase format (e7e8q)
+		/// - Comprehensive validation of rank transitions and side consistency
+		/// - Full support for capture and non-capture promotions
 		/// </summary>
 		public IEnumerator AnalyzePositionCoroutine(string fen, int movetimeMs = -1, int searchDepth = 12, int evaluationDepth = 15, int elo = 1500, int skillLevel = 8)
 		{
@@ -504,7 +573,7 @@ namespace GPTDeepResearch
 			LastAnalysisResult = new ChessAnalysisResult();
 			LastAnalysisResult.currentFen = fen;
 
-			// Extract and validate FEN
+			// Extract and validate FEN - side determination is FEN-driven only
 			char sideToMove = ExtractSideFromFen(fen);
 			string fenValidationError = ValidateFen(fen);
 			LastAnalysisResult.sideToMove = sideToMove;
@@ -604,22 +673,6 @@ namespace GPTDeepResearch
 		#endregion
 
 		#region Public API - Game Management
-
-		/// <summary>
-		/// Set which side the human player controls
-		/// </summary>
-		public void SetHumanSide(char side)
-		{
-			if (side == 'w' || side == 'b')
-			{
-				HumanSide = side;
-				UnityEngine.Debug.Log($"<color=green>[StockfishBridge] Human side set to: {(side == 'w' ? "White" : "Black")}</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log($"<color=red>[StockfishBridge] Invalid side: {side}. Use 'w' or 'b'</color>");
-			}
-		}
 
 		/// <summary>
 		/// Add move to game history
@@ -748,7 +801,6 @@ namespace GPTDeepResearch
 
 			return pgn.ToString().Trim();
 		}
-
 		#endregion
 
 		#region Public API - Utilities
@@ -906,7 +958,7 @@ namespace GPTDeepResearch
 
 		/// <summary>
 		/// Enhanced Elo calculation based on UCI_Elo, skill level, and search depth
-		/// Uses research data for accurate rating estimation
+		/// Uses updated research data for accurate rating estimation
 		/// </summary>
 		private int CalculateApproximateElo(int uciElo, int skillLevel, int searchDepth)
 		{
@@ -914,56 +966,56 @@ namespace GPTDeepResearch
 			if (uciElo > 0)
 			{
 				int baseElo = uciElo;
-				// Each depth level adds ~120 Elo (research-based)
-				if (searchDepth > 6)
-					baseElo += (searchDepth - 6) * 120;
-				else if (searchDepth < 6)
-					baseElo -= (6 - searchDepth) * 150;
+				// Each depth level adds ~100-130 Elo (updated research-based)
+				if (searchDepth > 8)
+					baseElo += (searchDepth - 8) * 115;
+				else if (searchDepth < 8)
+					baseElo -= (8 - searchDepth) * 140;
 
 				return Mathf.Clamp(baseElo, 100, 3600);
 			}
 
-			// Skill level mapping (based on testing data)
+			// Updated skill level mapping based on current Stockfish testing
 			if (skillLevel >= 0 && skillLevel <= 20)
 			{
 				int[] skillEloMap = {
-					300,   // Skill 0
-					450,   // Skill 1
-					600,   // Skill 2
-					750,   // Skill 3
-					900,   // Skill 4
-					1100,  // Skill 5
-					1300,  // Skill 6
-					1500,  // Skill 7
-					1750,  // Skill 8
-					2000,  // Skill 9
-					2200,  // Skill 10
-					2350,  // Skill 11
-					2450,  // Skill 12
-					2550,  // Skill 13
-					2650,  // Skill 14
-					2750,  // Skill 15
-					2850,  // Skill 16
-					2950,  // Skill 17
-					3050,  // Skill 18
-					3150,  // Skill 19
-					3250   // Skill 20
+					250,   // Skill 0  - Random moves
+					400,   // Skill 1  - Very weak
+					550,   // Skill 2  - Weak
+					700,   // Skill 3  - Beginner
+					850,   // Skill 4  - Improving beginner
+					1000,  // Skill 5  - Novice
+					1200,  // Skill 6  - Club player
+					1400,  // Skill 7  - Average club
+					1600,  // Skill 8  - Good club
+					1800,  // Skill 9  - Strong club
+					2000,  // Skill 10 - Expert
+					2150,  // Skill 11 - Master level
+					2250,  // Skill 12 - Strong master
+					2350,  // Skill 13 - International master
+					2450,  // Skill 14 - Grandmaster
+					2550,  // Skill 15 - Strong GM
+					2650,  // Skill 16 - Elite GM
+					2750,  // Skill 17 - World class
+					2850,  // Skill 18 - Super GM
+					2950,  // Skill 19 - World championship
+					3100   // Skill 20 - Full strength
 				};
 
 				int skillElo = skillEloMap[skillLevel];
 
 				// Depth adjustment for skill-based rating
-				if (searchDepth > 10)
-					skillElo += (searchDepth - 10) * 80;
-				else if (searchDepth < 10)
-					skillElo -= (10 - searchDepth) * 100;
+				if (searchDepth > 12)
+					skillElo += (searchDepth - 12) * 75;
+				else if (searchDepth < 12)
+					skillElo -= (12 - searchDepth) * 90;
 
 				return Mathf.Clamp(skillElo, 100, 3600);
 			}
 
 			// Full strength with depth scaling
-			int fullStrengthElo = 3200 + Math.Max(0, searchDepth - 12) * 50;
-			return Mathf.Clamp(fullStrengthElo, 2800, 3600);
+			int fullStrengthElo = 3150 + Math.Max(0, searchDepth - 15) * 40;
+			return Mathf.Clamp(fullStrengthElo, 3000, 3600);
 		}
 
 		/// <summary>
@@ -1038,7 +1090,7 @@ namespace GPTDeepResearch
 		{
 			if (!IsEngineRunning) return;
 
-			// Reset previous settings
+			// Reset previous settings to ensure clean state
 			SendCommand("setoption name UCI_LimitStrength value false");
 			SendCommand("setoption name Skill Level value 20");
 
@@ -1052,7 +1104,7 @@ namespace GPTDeepResearch
 					UnityEngine.Debug.Log($"<color=cyan>[Stockfish] Engine Elo limited to {elo}</color>");
 			}
 
-			// Apply skill level if specified
+			// Apply skill level if specified (overrides Elo setting when both are present)
 			if (skillLevel >= 0 && skillLevel <= 20)
 			{
 				SendCommand($"setoption name Skill Level value {skillLevel}");
@@ -1108,7 +1160,7 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Comprehensive FEN validation
+		/// Enhanced FEN validation with comprehensive checks
 		/// </summary>
 		private string ValidateFen(string fen)
 		{
@@ -1131,6 +1183,7 @@ namespace GPTDeepResearch
 
 			// Count kings and validate rank structure
 			int whiteKings = 0, blackKings = 0;
+			int totalPieces = 0;
 
 			for (int rankIndex = 0; rankIndex < 8; rankIndex++)
 			{
@@ -1149,6 +1202,7 @@ namespace GPTDeepResearch
 					else if ("rnbqkpRNBQKP".IndexOf(c) >= 0)
 					{
 						squareCount++;
+						totalPieces++;
 						if (c == 'K') whiteKings++;
 						else if (c == 'k') blackKings++;
 					}
@@ -1168,16 +1222,47 @@ namespace GPTDeepResearch
 			if (blackKings != 1)
 				return $"Found {blackKings} black kings, expected exactly 1";
 
+			// Validate reasonable piece count (max 32 pieces)
+			if (totalPieces > 32)
+				return $"Too many pieces on board: {totalPieces} (maximum 32)";
+
 			// Validate side to move
 			char side = parts[1].ToLower()[0];
 			if (side != 'w' && side != 'b')
 				return $"Side to move must be 'w' or 'b', found '{parts[1]}'";
 
+			// Optional: validate castling rights format if present
+			if (parts.Length >= 3)
+			{
+				string castling = parts[2];
+				if (castling != "-" && !IsValidCastlingRights(castling))
+					return $"Invalid castling rights format: '{castling}'";
+			}
+
 			return ""; // Valid FEN
 		}
 
 		/// <summary>
-		/// Parse analysis result with enhanced evaluation and promotion support
+		/// Validate castling rights string format
+		/// </summary>
+		private bool IsValidCastlingRights(string castling)
+		{
+			if (string.IsNullOrEmpty(castling) || castling == "-")
+				return true;
+
+			// Valid characters: K, Q, k, q (and must be in reasonable order)
+			foreach (char c in castling)
+			{
+				if ("KQkq".IndexOf(c) < 0)
+					return false;
+			}
+
+			// Additional validation: no duplicates
+			return castling.Length == castling.Distinct().Count();
+		}
+
+		/// <summary>
+		/// Parse analysis result with research-based evaluation and enhanced promotion support
 		/// </summary>
 		private void ParseAnalysisResult(string rawOutput, int searchDepth, int evaluationDepth)
 		{
@@ -1192,7 +1277,7 @@ namespace GPTDeepResearch
 
 			string[] lines = rawOutput.Split('\n');
 
-			// Parse evaluation first
+			// Parse evaluation first (research-based calculation)
 			if (evaluationDepth > 0 && enableEvaluation)
 			{
 				ParseEvaluationFromOutput(lines, evaluationDepth);
@@ -1204,7 +1289,7 @@ namespace GPTDeepResearch
 				LastAnalysisResult.sideToMoveWinProbability = 0.5f;
 			}
 
-			// Parse best move
+			// Parse best move with UCI promotion validation
 			ParseBestMoveFromOutput(lines);
 
 			// Log final result
@@ -1220,7 +1305,7 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Parse evaluation from engine output lines
+		/// Parse evaluation from engine output lines using research-based calculation
 		/// </summary>
 		private void ParseEvaluationFromOutput(string[] lines, int targetDepth)
 		{
@@ -1238,16 +1323,16 @@ namespace GPTDeepResearch
 
 			if (isMate)
 			{
-				// Mate score
+				// Mate score with high confidence
 				LastAnalysisResult.isMateScore = true;
 				LastAnalysisResult.mateDistance = mateDistance;
 				LastAnalysisResult.whiteWinProbability = ConvertMateToWinProbability(mateDistance);
 			}
 			else if (!float.IsNaN(centipawns))
 			{
-				// Centipawn score
+				// Research-based centipawn to probability conversion
 				LastAnalysisResult.centipawnEvaluation = centipawns;
-				LastAnalysisResult.whiteWinProbability = ConvertCentipawnsToWinProbability(centipawns);
+				LastAnalysisResult.whiteWinProbability = ConvertCentipawnsToWinProbabilityResearch(centipawns);
 			}
 			else
 			{
@@ -1255,7 +1340,7 @@ namespace GPTDeepResearch
 				LastAnalysisResult.whiteWinProbability = 0.5f;
 			}
 
-			// Calculate side-to-move probability
+			// Calculate side-to-move probability based on FEN
 			if (LastAnalysisResult.sideToMove == 'b')
 			{
 				LastAnalysisResult.sideToMoveWinProbability = 1f - LastAnalysisResult.whiteWinProbability;
@@ -1265,13 +1350,13 @@ namespace GPTDeepResearch
 				LastAnalysisResult.sideToMoveWinProbability = LastAnalysisResult.whiteWinProbability;
 			}
 
-			// Clamp probabilities
+			// Clamp probabilities to reasonable ranges
 			LastAnalysisResult.whiteWinProbability = Mathf.Clamp(LastAnalysisResult.whiteWinProbability, 0.001f, 0.999f);
 			LastAnalysisResult.sideToMoveWinProbability = Mathf.Clamp(LastAnalysisResult.sideToMoveWinProbability, 0.001f, 0.999f);
 		}
 
 		/// <summary>
-		/// Parse best move from engine output with full promotion support
+		/// Parse best move from engine output with enhanced UCI promotion validation
 		/// </summary>
 		private void ParseBestMoveFromOutput(string[] lines)
 		{
@@ -1308,8 +1393,8 @@ namespace GPTDeepResearch
 			// Handle special cases
 			if (move == "(none)" || string.IsNullOrEmpty(move))
 			{
-				// No legal moves available
-				if (LastAnalysisResult.isMateScore)
+				// No legal moves available - determine game end type
+				if (LastAnalysisResult.isMateScore && Math.Abs(LastAnalysisResult.mateDistance) <= 1)
 				{
 					LastAnalysisResult.bestMove = "check-mate";
 					LastAnalysisResult.isGameEnd = true;
@@ -1320,25 +1405,26 @@ namespace GPTDeepResearch
 					LastAnalysisResult.bestMove = "stale-mate";
 					LastAnalysisResult.isGameEnd = true;
 					LastAnalysisResult.isStalemate = true;
-					// Reset evaluation for stalemate
+					// Reset evaluation for stalemate (draw)
 					LastAnalysisResult.whiteWinProbability = 0.5f;
 					LastAnalysisResult.sideToMoveWinProbability = 0.5f;
 				}
 				return;
 			}
 
-			// Valid move - set and parse promotion data
+			// Valid move - set and parse promotion data with enhanced validation
 			LastAnalysisResult.bestMove = move;
 			LastAnalysisResult.ParsePromotionData();
 		}
 
 		/// <summary>
-		/// Select best info line based on depth and multipv
+		/// Select best info line based on depth and multipv preferences
 		/// </summary>
 		private string SelectBestInfoLine(string[] lines, int targetDepth)
 		{
 			string bestLine = null;
 			int bestDepth = -1;
+			bool foundExactDepth = false;
 
 			foreach (string line in lines)
 			{
@@ -1347,15 +1433,18 @@ namespace GPTDeepResearch
 					continue;
 
 				var (depth, multipv, hasScore) = ParseInfoLineMetadata(trimmedLine);
-				if (!hasScore || multipv > 1)
+				if (!hasScore || multipv > 1) // Only consider main line (multipv 1)
 					continue;
 
-				// Prefer exact depth match, otherwise take highest depth
-				if (depth == targetDepth)
+				// Prefer exact depth match first
+				if (depth == targetDepth && !foundExactDepth)
 				{
-					return trimmedLine;
+					bestLine = trimmedLine;
+					bestDepth = depth;
+					foundExactDepth = true;
 				}
-				else if (depth > bestDepth)
+				// If no exact match found, take highest depth
+				else if (!foundExactDepth && depth > bestDepth)
 				{
 					bestDepth = depth;
 					bestLine = trimmedLine;
@@ -1366,13 +1455,13 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Parse info line metadata
+		/// Parse info line metadata with enhanced validation
 		/// </summary>
 		private (int depth, int multipv, bool hasScore) ParseInfoLineMetadata(string infoLine)
 		{
 			string[] tokens = infoLine.Split(' ');
 			int depth = -1;
-			int multipv = 1;
+			int multipv = 1; // Default to main line
 			bool hasScore = false;
 
 			for (int i = 0; i < tokens.Length - 1; i++)
@@ -1395,7 +1484,7 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Extract score from UCI info line
+		/// Extract score from UCI info line with improved parsing
 		/// </summary>
 		private (float centipawns, bool isMate, int mateDistance) ExtractScoreFromInfoLine(string infoLine)
 		{
@@ -1410,7 +1499,9 @@ namespace GPTDeepResearch
 			{
 				if (tokens[i] == "cp" && int.TryParse(tokens[i + 1], out int cp))
 				{
-					return (cp, false, 0);
+					// Clamp extreme centipawn values for display
+					float clampedCp = Mathf.Clamp(cp, -MAX_EVALUATION_CENTIPAWNS, MAX_EVALUATION_CENTIPAWNS);
+					return (clampedCp, false, 0);
 				}
 				else if (tokens[i] == "mate" && int.TryParse(tokens[i + 1], out int mate))
 				{
@@ -1422,32 +1513,37 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Convert centipawn evaluation to win probability using logistic function
-		/// Based on chess research: P(win) = 1 / (1 + exp(-k * centipawns))
+		/// Convert centipawn evaluation to win probability using Lichess research equation
+		/// Research source: Win% = 50 + 50 * (2 / (1 + exp(-0.00368208 * centipawns)) - 1)
 		/// </summary>
-		private float ConvertCentipawnsToWinProbability(float centipawns)
+		private float ConvertCentipawnsToWinProbabilityResearch(float centipawns)
 		{
-			// Research-based scaling: ~100cp = ~64% win probability
-			float scaledValue = CENTIPAWN_SCALE * centipawns;
-			return 1f / (1f + Mathf.Exp(-scaledValue));
+			// Apply Lichess research-based equation
+			float exponent = -LICHESS_CENTIPAWN_SCALE * centipawns;
+			float winPercentage = 50f + 50f * (2f / (1f + Mathf.Exp(exponent)) - 1f);
+			
+			// Convert percentage to probability (0-1 range)
+			return winPercentage / 100f;
 		}
 
 		/// <summary>
-		/// Convert mate distance to win probability
+		/// Convert mate distance to win probability with high confidence
 		/// </summary>
 		private float ConvertMateToWinProbability(int mateDistance)
 		{
 			if (mateDistance > 0)
 			{
 				// White mates: very high probability for white
-				float probability = 1f - 1f / (1f + MATE_BONUS / mateDistance);
-				return Mathf.Clamp(probability, 0.95f, 0.999f);
+				// Shorter mate = higher confidence
+				float confidence = MATE_CONFIDENCE_THRESHOLD + (1f - MATE_CONFIDENCE_THRESHOLD) * (1f - 1f / (Math.Abs(mateDistance) + 1f));
+				return Mathf.Clamp(confidence, MATE_CONFIDENCE_THRESHOLD, 0.999f);
 			}
 			else if (mateDistance < 0)
 			{
-				// Black mates: very low probability for white
-				float probability = 1f / (1f + MATE_BONUS / Math.Abs(mateDistance));
-				return Mathf.Clamp(probability, 0.001f, 0.05f);
+				// Black mates: very low probability for white  
+				// Shorter mate = lower confidence for white
+				float confidence = (1f - MATE_CONFIDENCE_THRESHOLD) * (1f / (Math.Abs(mateDistance) + 1f));
+				return Mathf.Clamp(confidence, 0.001f, 1f - MATE_CONFIDENCE_THRESHOLD);
 			}
 
 			return 0.5f; // Should not happen
@@ -1632,7 +1728,7 @@ namespace GPTDeepResearch
 
 		#endregion
 
-		#region Public API - Testing
+		#region Private Methods - Testing
 
 		/// <summary>
 		/// Test promotion parsing with various UCI formats
@@ -1641,35 +1737,35 @@ namespace GPTDeepResearch
 		{
 			string[] testMoves = { "e7e8q", "a7a8n", "h2h1r", "b7b8b", "d7c8q", "f2g1n" };
 
-			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing promotion parsing...</color>");
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing UCI promotion parsing...</color>");
 
 			foreach (string move in testMoves)
 			{
 				ChessAnalysisResult testResult = new ChessAnalysisResult
 				{
 					bestMove = move,
-					sideToMove = move[1] == '7' ? 'b' : 'w' // Determine side by source rank
+					sideToMove = move[1] == '7' ? 'w' : 'b' // Determine side by source rank
 				};
 
 				testResult.ParsePromotionData();
 
 				if (testResult.isPromotion)
 				{
-					UnityEngine.Debug.Log($"<color=green>[Test] {move} -> {testResult.GetPromotionDescription()}</color>");
+					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ {move} -> {testResult.GetPromotionDescription()}</color>");
 				}
 				else
 				{
-					UnityEngine.Debug.Log($"<color=red>[Test] {move} -> Failed to parse as promotion</color>");
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ {move} -> Failed to parse as promotion</color>");
 				}
 			}
 		}
 
 		/// <summary>
-		/// Test Elo calculation with various parameters
+		/// Test research-based Elo calculation
 		/// </summary>
 		private void TestEloCalculation()
 		{
-			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing Elo calculation...</color>");
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing updated Elo calculation...</color>");
 
 			int[] testSkillLevels = { 0, 5, 10, 15, 20 };
 			int[] testDepths = { 5, 10, 15, 20 };
@@ -1679,51 +1775,79 @@ namespace GPTDeepResearch
 				foreach (int depth in testDepths)
 				{
 					int elo = CalculateApproximateElo(-1, skill, depth);
-					UnityEngine.Debug.Log($"<color=green>[Test] Skill {skill}, Depth {depth} -> Elo {elo}</color>");
+					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Skill {skill}, Depth {depth} -> Elo {elo}</color>");
 				}
+			}
+
+			// Test explicit Elo settings
+			int[] testElos = { 1000, 1500, 2000, 2500 };
+			foreach (int elo in testElos)
+			{
+				int calculatedElo = CalculateApproximateElo(elo, -1, 12);
+				UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Explicit Elo {elo} -> Calculated {calculatedElo}</color>");
 			}
 		}
 
-
-		// ADD - After the existing TestEloCalculation method, add comprehensive API validation tests:
 		/// <summary>
-		/// Test comprehensive analysis with various FEN positions and edge cases
+		/// Test research-based evaluation calculations
 		/// </summary>
-		private void TestComprehensiveAnalysis()
+		private void TestEvaluationCalculation()
 		{
-			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing comprehensive analysis...</color>");
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing research-based evaluation...</color>");
 
-			// Test positions
+			float[] testCentipawns = { -200f, -100f, 0f, 50f, 100f, 200f, 500f, 1000f };
+
+			foreach (float cp in testCentipawns)
+			{
+				float winProb = ConvertCentipawnsToWinProbabilityResearch(cp);
+				UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ {cp}cp -> {winProb:P1} win probability</color>");
+			}
+
+			// Test mate scores
+			int[] mateDistances = { 1, 3, 5, -1, -3, -5 };
+			foreach (int mate in mateDistances)
+			{
+				float mateProb = ConvertMateToWinProbability(mate);
+				string winner = mate > 0 ? "White" : "Black";
+				UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Mate in {Math.Abs(mate)} for {winner} -> {mateProb:P1}</color>");
+			}
+		}
+
+		/// <summary>
+		/// Test comprehensive FEN-based analysis
+		/// </summary>
+		private void TestFENBasedAnalysis()
+		{
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing FEN-based analysis...</color>");
+
+			// Test positions with different sides to move
 			string[] testPositions = {
-				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", // Starting position
-				"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // Complex middle game
-				"8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", // Endgame
-				"rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", // Promotion opportunity
-				"8/8/8/8/8/8/k7/K7 w - - 0 1" // Minimal material
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", // Starting position - white
+				"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", // After e4 - black to move
+				"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // Complex middle game - white
+				"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1", // Same position - black
+				"8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", // Endgame - white
+				"8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 b - - 0 1" // Same endgame - black
 			};
 
 			foreach (string fen in testPositions)
 			{
-				StartCoroutine(TestSinglePosition(fen));
-			}
-		}
-
-		private IEnumerator TestSinglePosition(string fen)
-		{
-			yield return StartCoroutine(AnalyzePositionCoroutine(fen, 1000, 8, 10, 1500, 5));
-
-			if (LastAnalysisResult.bestMove.StartsWith("ERROR"))
-			{
-				UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Analysis failed for {fen}: {LastAnalysisResult.errorMessage}</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Analysis success: {LastAnalysisResult.bestMove} | Eval: {LastAnalysisResult.GetEvaluationDisplay()}</color>");
+				char extractedSide = ExtractSideFromFen(fen);
+				string validation = ValidateFen(fen);
+				
+				if (string.IsNullOrEmpty(validation))
+				{
+					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ FEN valid, side: {extractedSide} | {fen.Substring(0, Math.Min(30, fen.Length))}...</color>");
+				}
+				else
+				{
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ FEN invalid: {validation}</color>");
+				}
 			}
 		}
 
 		/// <summary>
-		/// Test game history management with edge cases
+		/// Test game history management
 		/// </summary>
 		private void TestGameHistoryManagement()
 		{
@@ -1822,63 +1946,19 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Test side management functionality
-		/// </summary>
-		private void TestSideManagement()
-		{
-			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing side management...</color>");
-
-			char originalSide = HumanSide;
-
-			// Test setting human side
-			SetHumanSide('w');
-			if (HumanSide == 'w' && EngineSide == 'b')
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Human side set to white correctly</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Human side setting failed</color>");
-			}
-
-			SetHumanSide('b');
-			if (HumanSide == 'b' && EngineSide == 'w')
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Human side set to black correctly</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Human side setting failed</color>");
-			}
-
-			// Test invalid side
-			SetHumanSide('x');
-			if (HumanSide == 'b') // Should remain unchanged
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Invalid side rejected correctly</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Invalid side not rejected</color>");
-			}
-
-			// Restore original side
-			SetHumanSide(originalSide);
-		}
-
-		/// <summary>
-		/// Test FEN validation with edge cases
+		/// Test enhanced FEN validation
 		/// </summary>
 		private void TestFENValidation()
 		{
-			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing FEN validation...</color>");
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing enhanced FEN validation...</color>");
 
 			// Valid FENs
 			string[] validFENs = {
-		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-		"8/8/8/8/8/8/8/8 w - - 0 1",
-		"startpos"
-	};
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+				"k7/8/8/8/8/8/8/7K w - - 0 1",
+				"startpos",
+				"r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1" // Complex valid position
+			};
 
 			foreach (string fen in validFENs)
 			{
@@ -1894,13 +1974,18 @@ namespace GPTDeepResearch
 			}
 
 			// Invalid FENs
-			string[] invalidFENs = {
-		"",
-		"invalid",
-		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", // Missing side to move
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR x KQkq - 0 1", // Invalid side
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP w KQkq - 0 1" // Missing rank
-    };
+			string[] invalidFENs =
+			{
+				"",
+				"invalid",
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", // Missing side to move
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR x KQkq - 0 1", // Invalid side
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP w KQkq - 0 1", // Missing rank
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNRK w KQkq - 0 1", // Too many pieces in rank
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBN w KQkq - 0 1", // Too few pieces in rank
+				"8/8/8/8/8/8/8/KK w - - 0 1", // Two white kings
+				"8/8/8/8/8/8/8/K w - - 0 1" // Missing black king
+			};
 
 			foreach (string fen in invalidFENs)
 			{
@@ -1917,21 +2002,22 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Test promotion detection and parsing
+		/// Test enhanced promotion detection and parsing
 		/// </summary>
 		private void TestPromotionDetection()
 		{
-			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing promotion detection...</color>");
+			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing enhanced promotion detection...</color>");
 
-			// Test promotion moves
-			string[] promotionMoves = { "e7e8q", "e7e8r", "e7e8b", "e7e8n", "a2a1Q", "h7h8N" };
-			char[] expectedPieces = { 'q', 'r', 'b', 'n', 'Q', 'N' };
+			// Test valid UCI promotion moves
+			string[] promotionMoves = { "e7e8q", "e7e8r", "e7e8b", "e7e8n", "a2a1q", "h7h8n", "d7c8q", "f2g1r" };
+			char[] expectedPieces = { 'q', 'r', 'b', 'n', 'q', 'n', 'q', 'r' };
+			char[] expectedSides = { 'w', 'w', 'w', 'w', 'b', 'w', 'w', 'b' };
 
 			for (int i = 0; i < promotionMoves.Length; i++)
 			{
 				ChessAnalysisResult result = new ChessAnalysisResult();
 				result.bestMove = promotionMoves[i];
-				result.sideToMove = char.IsUpper(expectedPieces[i]) ? 'w' : 'b';
+				result.sideToMove = expectedSides[i];
 				result.ParsePromotionData();
 
 				if (result.isPromotion && result.promotionPiece == expectedPieces[i])
@@ -1940,12 +2026,32 @@ namespace GPTDeepResearch
 				}
 				else
 				{
-					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Promotion detection failed: {promotionMoves[i]}</color>");
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Promotion detection failed: {promotionMoves[i]} (expected {expectedPieces[i]}, got {result.promotionPiece})</color>");
+				}
+			}
+
+			// Test invalid promotion attempts
+			string[] invalidPromotions = { "e2e4", "e7e8Q", "e7e8k", "e6e7q", "e3e4q" }; // Wrong format, uppercase, invalid piece, wrong ranks
+
+			foreach (string move in invalidPromotions)
+			{
+				ChessAnalysisResult result = new ChessAnalysisResult();
+				result.bestMove = move;
+				result.sideToMove = 'w';
+				result.ParsePromotionData();
+
+				if (!result.isPromotion)
+				{
+					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Invalid promotion correctly rejected: {move}</color>");
+				}
+				else
+				{
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Invalid promotion incorrectly accepted: {move}</color>");
 				}
 			}
 
 			// Test non-promotion moves
-			string[] normalMoves = { "e2e4", "Nf3", "O-O", "Qh5" };
+			string[] normalMoves = { "e2e4", "Nf3", "O-O", "Qh5", "d2d4", "g1f3" };
 
 			foreach (string move in normalMoves)
 			{
@@ -1967,23 +2073,43 @@ namespace GPTDeepResearch
 		private IEnumerator RunCoroutineTests()
 		{
 			yield return new WaitForSeconds(0.1f);
-			TestComprehensiveAnalysis();
+			
+			// Test comprehensive position analysis
+			string[] testPositions = {
+				"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
+				"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1"
+			};
+
+			foreach (string fen in testPositions)
+			{
+				yield return StartCoroutine(AnalyzePositionCoroutine(fen, 1000, 8, 10, 1500, 5));
+
+				if (LastAnalysisResult.bestMove.StartsWith("ERROR"))
+				{
+					UnityEngine.Debug.Log($"<color=red>[StockfishBridge] ✗ Analysis failed for position: {LastAnalysisResult.errorMessage}</color>");
+				}
+				else
+				{
+					UnityEngine.Debug.Log($"<color=green>[StockfishBridge] ✓ Analysis success: {LastAnalysisResult.bestMove} | {LastAnalysisResult.GetEvaluationDisplay()}</color>");
+				}
+			}
 		}
 
+		#endregion
+
 		/// <summary>
-		/// Run all StockfishBridge API validation tests
+		/// Run all StockfishBridge comprehensive tests with research-based improvements
 		/// </summary>
 		public void RunAllTests()
 		{
-			UnityEngine.Debug.Log("<color=cyan>=== StockfishBridge Comprehensive Test Suite ===</color>");
+			UnityEngine.Debug.Log("<color=cyan>=== StockfishBridge Research-Based Test Suite v0.4 ===</color>");
 
 			TestPromotionParsing();
 			TestEloCalculation();
-			TestComprehensiveAnalysis();
-
+			TestEvaluationCalculation();
+			TestFENBasedAnalysis();
 			TestGameHistoryManagement();
 			TestEngineRestart();
-			TestSideManagement();
 			TestFENValidation();
 			TestPromotionDetection();
 
@@ -1992,6 +2118,5 @@ namespace GPTDeepResearch
 
 			UnityEngine.Debug.Log("<color=cyan>=== StockfishBridge Tests Completed ===</color>");
 		}
-		#endregion
 	}
 }

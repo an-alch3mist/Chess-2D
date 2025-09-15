@@ -23,7 +23,7 @@ using UnityEngine.UI;
 using TMPro;
 using SPACE_UTIL;
 
-namespace GptDeepResearch
+namespace GPTDeepResearch
 {
 	[System.Serializable]
 	public class ChessPieceConfig

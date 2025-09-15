@@ -296,6 +296,8 @@ GameObject:
   - component: {fileID: 312026293}
   - component: {fileID: 312026294}
   - component: {fileID: 312026295}
+  - component: {fileID: 312026297}
+  - component: {fileID: 312026296}
   m_Layer: 0
   m_Name: GameObject
   m_TagString: Untagged
@@ -324,7 +326,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 312026292}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3ba767a5465fed2468d0c57c823d7211, type: 3}
   m_Name: 
@@ -344,18 +346,64 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   promotionPanel: {fileID: 396123572}
   titleText: {fileID: 448738061}
-  timeoutText: {fileID: 0}
   queenButton: {fileID: 151566032}
   rookButton: {fileID: 1936880291}
   bishopButton: {fileID: 1868087345}
   knightButton: {fileID: 1981570560}
-  cancelButton: {fileID: 0}
-  timeoutSeconds: 10
+  blackQueenSprite: {fileID: 6835995104348828855, guid: 655cb4efb8ae095419f8b5106e5e997a, type: 3}
+  blackRookSprite: {fileID: 2724963404071155675, guid: 655cb4efb8ae095419f8b5106e5e997a, type: 3}
+  blackBishopSprite: {fileID: -5391753709267269744, guid: 655cb4efb8ae095419f8b5106e5e997a, type: 3}
+  blackKnightSprite: {fileID: 3659358165985340574, guid: 655cb4efb8ae095419f8b5106e5e997a, type: 3}
+  whiteQueenSprite: {fileID: 3625764785234014273, guid: 655cb4efb8ae095419f8b5106e5e997a, type: 3}
+  whiteRookSprite: {fileID: -8043906449996607461, guid: 655cb4efb8ae095419f8b5106e5e997a, type: 3}
+  whiteBishopSprite: {fileID: 4160703276510546385, guid: 655cb4efb8ae095419f8b5106e5e997a, type: 3}
+  whiteKnightSprite: {fileID: 3654758903977178377, guid: 655cb4efb8ae095419f8b5106e5e997a, type: 3}
   defaultPromotionPiece: 81
-  showTimeoutCountdown: 1
-  whiteButtonColor: {r: 1, g: 1, b: 1, a: 1}
-  blackButtonColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  autoSelectionDelay: 0.1
   selectedColor: {r: 0.49167854, g: 0.8207547, b: 0.49167854, a: 1}
+  normalColor: {r: 1, g: 1, b: 1, a: 1}
+  highlightColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+--- !u!114 &312026296
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 312026292}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2daacf653fb5741479c064062ada2ebf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  stockfishBridge: {fileID: 312026297}
+--- !u!114 &312026297
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 312026292}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f20a0ffe259f9c4f944d61822df17e9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  defaultTimeoutMs: 20000
+  enableDebugLogging: 0
+  enableEvaluation: 1
+  defaultDepth: 10
+  evalDepth: 15
+  defaultElo: 1500
+  defaultSkillLevel: 8
+  allowPlayerSideSelection: 1
+  maxHistorySize: 100
+  initialHumanSide: 119
+  OnEngineLine:
+    m_PersistentCalls:
+      m_Calls: []
+  OnAnalysisComplete:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!1 &396123572
 GameObject:
   m_ObjectHideFlags: 0

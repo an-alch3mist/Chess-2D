@@ -420,32 +420,63 @@ namespace GPTDeepResearch
 
 		private IEnumerator PromotionUI_Check()
 		{
-			// Setup event handlers
-			promotionUI.OnPromotionSelected += HandlePromotion;
-			promotionUI.OnPromotionSelectedWithData += HandlePromotionData;
+			// Subscribe to promotion events
+			promotionUI.OnPromotionSelected += OnPieceSelected;
+			promotionUI.OnPromotionSelectedWithData += OnPieceSelectedWithData;
 
-			// Test human selection dialog
+			// Test human promotion dialog
+			Debug.Log("<color=cyan>Testing human promotion dialog...</color>");
 			promotionUI.ShowPromotionDialog(true, "e7", "e8");
-			yield return new WaitUntil(() => !promotionUI.IsWaitingForPromotion());
+
+			// Wait for selection
+			while (promotionUI.IsWaitingForPromotion())
+			{
+				yield return null;
+			}
+			// Expected output: "[PromotionUI] Selected promotion: Queen (Human)"
+
+			yield return new WaitForSeconds(1f);
 
 			// Test engine auto-selection
-			promotionUI.SelectPromotionAutomatically('Q', false);
+			Debug.Log("<color=cyan>Testing engine auto-selection...</color>");
+			yield return promotionUI.SelectPromotionAutomaticallyCoroutine('R', false);
+			// Expected output: "[PromotionUI] Selected promotion: Rook (Engine)"
 
-			// Test context and state
+			// Test context retrieval
 			var context = promotionUI.GetPromotionContext();
+			Debug.Log($"<color=green>Context: {context.isWhite}, {context.fromSquare}, {context.toSquare}</color>");
+			// Expected output: "Context: False, , "
+
+			// Test state queries
 			bool waiting = promotionUI.IsWaitingForPromotion();
-			bool engine = promotionUI.IsEngineSelection();
+			bool isEngine = promotionUI.IsEngineSelection();
+			Debug.Log($"<color=yellow>Waiting: {waiting}, Engine: {isEngine}</color>");
+			// Expected output: "Waiting: False, Engine: False"
 
-			// Test data object
-			var data = new PromotionSelectionData('R', true, "a7", "a8");
-			string description = data.ToString();
+			// Test debug representation
+			string debugInfo = promotionUI.ToString();
+			Debug.Log($"<color=magenta>Debug: {debugInfo}</color>");
+			// Expected output: "Debug: PromotionUI[Waiting:False, Side:Black, Selected:R, Default:Q, Engine:False]"
 
-			Debug.Log($"API Results: Context={context}, Waiting={waiting}, Engine={engine}, Data={description}");
-			yield break;
+			// Run comprehensive tests
+			promotionUI.RunAllTests();
+			// Expected output: "[PromotionUI] ✓ All tests completed successfully"
+
+			// Cleanup
+			promotionUI.OnPromotionSelected -= OnPieceSelected;
+			promotionUI.OnPromotionSelectedWithData -= OnPieceSelectedWithData;
 		}
 
-		private void HandlePromotion(char piece) { }
-		private void HandlePromotionData(PromotionSelectionData data) { }
+		private void OnPieceSelected(char piece)
+		{
+			Debug.Log($"<color=green>Piece selected: {piece}</color>");
+		}
+
+		private void OnPieceSelectedWithData(PromotionSelectionData data)
+		{
+			Debug.Log($"<color=blue>Selection data: {data.ToString()}</color>");
+			// Expected output: "Selection data: White promotes to Queen (Human) (e7-e8)"
+		}
 
 	}
 }
