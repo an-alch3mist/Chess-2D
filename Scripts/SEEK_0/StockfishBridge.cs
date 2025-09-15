@@ -70,7 +70,7 @@ namespace GPTDeepResearch
 			public string currentFen = "";            // Current position FEN
 
 			[Header("Evaluation")]
-			public float whiteWinProbability = 0.5f;  // 0-1 probability for white winning (Lichess research-based)
+			public float engineSideWinProbability = 0.5f;  // 0-1 probability for white winning (Lichess research-based)
 			public float sideToMoveWinProbability = 0.5f; // 0-1 probability for side-to-move winning
 			public float centipawnEvaluation = 0f;    // Raw centipawn score from engine
 			public bool isMateScore = false;          // True if evaluation is mate score
@@ -243,36 +243,68 @@ namespace GPTDeepResearch
 			{
 				if (isMateScore)
 				{
-					string winner = mateDistance > 0 ? "White" : "Black";
+					string winner = mateDistance > 0 ? "Engine" : "Opponent";
 					return $"Mate in {Math.Abs(mateDistance)} for {winner}";
 				}
 				else
 				{
-					// Always use whiteWinProbability as the base since engine reports from white's perspective
-					float whitePercentage = whiteWinProbability * 100f;
-					float blackPercentage = (1f - whiteWinProbability) * 100f;
+					// Calculate actual win probabilities based on engine evaluation
+					float whiteActualWinProb, blackActualWinProb;
+
+					if (centipawnEvaluation >= 0)
+					{
+						// Positive centipawns = good for White
+						whiteActualWinProb = engineSideWinProbability;
+						blackActualWinProb = 1f - engineSideWinProbability;
+					}
+					else
+					{
+						// Negative centipawns = good for Black
+						whiteActualWinProb = 1f - engineSideWinProbability;
+						blackActualWinProb = engineSideWinProbability;
+					}
+
+					float whitePercentage = whiteActualWinProb * 100f;
+					float blackPercentage = blackActualWinProb * 100f;
 
 					// Show evaluation strength indicator for extreme positions
 					string strengthIndicator = "";
 					if (Math.Abs(centipawnEvaluation) > 500f)
 						strengthIndicator = Math.Abs(centipawnEvaluation) > 1000f ? " (Decisive)" : " (Winning)";
 
-					// Close to equal, show both
-					return $"{strengthIndicator}, White: {whitePercentage:F1}% | Black: {blackPercentage:F1}%";
-
+					return $"{strengthIndicator}, Engine: {whitePercentage:F1}% | Opponent: {blackPercentage:F1}%";
 				}
 			}
 
 			#region ToString Implementation
+			// 4. MODIFY: Update ToString() method in ChessAnalysisResult (around line 200)
 			public override string ToString()
 			{
 				var sb = new StringBuilder();
 				sb.AppendLine("ChessAnalysisResult {");
 				sb.AppendLine($"  BestMove:           {SafeString(bestMove)}");
 				sb.AppendLine($"  SideToMove:         {GetSideDisplay()}");
-				sb.AppendLine($"  WhiteWinProb:       {whiteWinProbability:F4} ({whiteWinProbability:P1})");
-				sb.AppendLine($"  STMWinProb:         {sideToMoveWinProbability:F4} ({sideToMoveWinProbability:P1})");
-				sb.AppendLine($"  EvaluationDisplay:  {GetEvaluationDisplay()}");
+				sb.AppendLine($"  CurrentFEN:        {SafeString(currentFen)}"); // ADD: Show original FEN
+
+				// Calculate and display actual win probabilities correctly
+				float engineSideActualWinProb, opponentActualWinProb;
+				if (centipawnEvaluation >= 0)
+				{
+					engineSideActualWinProb = engineSideWinProbability;
+					opponentActualWinProb = 1f - engineSideWinProbability;
+				}
+				else
+				{
+					engineSideActualWinProb = 1f - engineSideWinProbability;
+					opponentActualWinProb = engineSideWinProbability;
+				}
+
+				sb.AppendLine($"  EngineWinProb:		{engineSideActualWinProb:F4} ({engineSideActualWinProb:P1})"); // MODIFY: Show corrected white probability
+				sb.AppendLine($"  OpponentWinProb:		{opponentActualWinProb:F4} ({opponentActualWinProb:P1})"); // ADD: Show black probability
+				sb.AppendLine($"  STMWinProb:			{sideToMoveWinProbability:F4} ({sideToMoveWinProbability:P1})");
+				sb.AppendLine($"  EvaluationDisplay:	{GetEvaluationDisplay()}");
+
+				// ... rest of toString remains the same
 				sb.AppendLine($"  IsGameEnd:          {isGameEnd} (Checkmate: {isCheckmate}, Stalemate: {isStalemate})");
 				sb.AppendLine($"  InCheck:            {inCheck}");
 				sb.AppendLine($"  IsPromotion:        {isPromotion}");
@@ -1028,7 +1060,7 @@ namespace GPTDeepResearch
 		{
 			LastAnalysisResult.bestMove = bestMove;
 			LastAnalysisResult.errorMessage = errorMessage;
-			LastAnalysisResult.whiteWinProbability = 0.5f;
+			LastAnalysisResult.engineSideWinProbability = 0.5f;
 			LastAnalysisResult.sideToMoveWinProbability = 0.5f;
 			LastRawOutput = $"ERROR: {errorMessage}";
 
@@ -1288,7 +1320,7 @@ namespace GPTDeepResearch
 			else
 			{
 				// Default neutral evaluation
-				LastAnalysisResult.whiteWinProbability = 0.5f;
+				LastAnalysisResult.engineSideWinProbability = 0.5f;
 				LastAnalysisResult.sideToMoveWinProbability = 0.5f;
 			}
 
@@ -1317,7 +1349,7 @@ namespace GPTDeepResearch
 			if (string.IsNullOrEmpty(bestInfoLine))
 			{
 				// No evaluation found, use neutral
-				LastAnalysisResult.whiteWinProbability = 0.5f;
+				LastAnalysisResult.engineSideWinProbability = 0.5f; // MODIFY: Use new field name
 				LastAnalysisResult.sideToMoveWinProbability = 0.5f;
 				return;
 			}
@@ -1329,32 +1361,50 @@ namespace GPTDeepResearch
 				// Mate score with high confidence
 				LastAnalysisResult.isMateScore = true;
 				LastAnalysisResult.mateDistance = mateDistance;
-				LastAnalysisResult.whiteWinProbability = ConvertMateToWinProbability(mateDistance);
+				LastAnalysisResult.engineSideWinProbability = ConvertMateToWinProbability(mateDistance); // MODIFY: Use new field name
 			}
 			else if (!float.IsNaN(centipawns))
 			{
 				// Research-based centipawn to probability conversion
 				LastAnalysisResult.centipawnEvaluation = centipawns;
-				LastAnalysisResult.whiteWinProbability = ConvertCentipawnsToWinProbabilityResearch(centipawns);
+				LastAnalysisResult.engineSideWinProbability = ConvertCentipawnsToWinProbabilityResearch(centipawns); // MODIFY: Use new field name
 			}
 			else
 			{
 				// Fallback neutral
-				LastAnalysisResult.whiteWinProbability = 0.5f;
+				LastAnalysisResult.engineSideWinProbability = 0.5f; // MODIFY: Use new field name
 			}
 
 			// Calculate side-to-move probability based on FEN
 			if (LastAnalysisResult.sideToMove == 'b')
 			{
-				LastAnalysisResult.sideToMoveWinProbability = 1f - LastAnalysisResult.whiteWinProbability;
+				// When black to move, if evaluation is positive (good for white), STM probability is low
+				// When black to move, if evaluation is negative (good for black), STM probability is high
+				if (LastAnalysisResult.centipawnEvaluation >= 0)
+				{
+					LastAnalysisResult.sideToMoveWinProbability = 1f - LastAnalysisResult.engineSideWinProbability;
+				}
+				else
+				{
+					LastAnalysisResult.sideToMoveWinProbability = LastAnalysisResult.engineSideWinProbability;
+				}
 			}
 			else
 			{
-				LastAnalysisResult.sideToMoveWinProbability = LastAnalysisResult.whiteWinProbability;
+				// When white to move, if evaluation is positive (good for white), STM probability is high
+				// When white to move, if evaluation is negative (good for black), STM probability is low
+				if (LastAnalysisResult.centipawnEvaluation >= 0)
+				{
+					LastAnalysisResult.sideToMoveWinProbability = LastAnalysisResult.engineSideWinProbability;
+				}
+				else
+				{
+					LastAnalysisResult.sideToMoveWinProbability = 1f - LastAnalysisResult.engineSideWinProbability;
+				}
 			}
 
 			// Clamp probabilities to reasonable ranges
-			LastAnalysisResult.whiteWinProbability = Mathf.Clamp(LastAnalysisResult.whiteWinProbability, 0.001f, 0.999f);
+			LastAnalysisResult.engineSideWinProbability = Mathf.Clamp(LastAnalysisResult.engineSideWinProbability, 0.001f, 0.999f); // MODIFY: Use new field name
 			LastAnalysisResult.sideToMoveWinProbability = Mathf.Clamp(LastAnalysisResult.sideToMoveWinProbability, 0.001f, 0.999f);
 		}
 
@@ -1409,7 +1459,7 @@ namespace GPTDeepResearch
 					LastAnalysisResult.isGameEnd = true;
 					LastAnalysisResult.isStalemate = true;
 					// Reset evaluation for stalemate (draw)
-					LastAnalysisResult.whiteWinProbability = 0.5f;
+					LastAnalysisResult.engineSideWinProbability = 0.5f;
 					LastAnalysisResult.sideToMoveWinProbability = 0.5f;
 				}
 				return;
