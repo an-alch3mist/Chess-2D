@@ -31,7 +31,6 @@ namespace GPTDeepResearch
 			Debug.Log(stockfishBridge.LastAnalysisResult);
 		}
 
-		//
 
 	}
 }
