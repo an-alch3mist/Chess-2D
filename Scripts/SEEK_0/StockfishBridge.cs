@@ -44,8 +44,8 @@ namespace GPTDeepResearch
 
 		[Header("Default Engine Settings")]
 		[SerializeField] private int defaultDepth = 12;
-		[SerializeField] private int evalDepth = 15;
-		[SerializeField] private int defaultElo = 1500;
+		[SerializeField] private int evalDepth = 12;
+		[SerializeField] private int defaultElo = 700;
 		[SerializeField] private int defaultSkillLevel = 8;
 
 		// Research-based evaluation constants from Lichess analysis
@@ -319,39 +319,10 @@ namespace GPTDeepResearch
 			#endregion
 		}
 
-		/// <summary>
-		/// Analysis log entry for debugging and PGN export
-		/// </summary>
-		[System.Serializable]
-		public class AnalysisLogEntry
-		{
-			public string fen;                      // Position that was analyzed
-			public string bestMove;                 // Engine's best move
-			public float evaluation;                // Position evaluation
-			public float analysisTimeMs;            // Time taken for analysis
-			public int depth;                       // Search depth used
-			public DateTime timestamp;              // When analysis was performed
-
-			public AnalysisLogEntry(string fen, string bestMove, float evaluation, float analysisTime, int depth)
-			{
-				this.fen = fen;
-				this.bestMove = bestMove;
-				this.evaluation = evaluation;
-				this.analysisTimeMs = analysisTime;
-				this.depth = depth;
-				this.timestamp = DateTime.Now;
-			}
-
-			public override string ToString()
-			{
-				return $"AnalysisLogEntry {{ FEN: {fen?.Substring(0, Math.Min(20, fen?.Length ?? 0))}..., Move: {bestMove}, Eval: {evaluation:F2}, Time: {analysisTimeMs:F1}ms, Depth: {depth} }}";
-			}
-		}
 
 		// Public properties
 		public string LastRawOutput { get; private set; } = "";
 		public ChessAnalysisResult LastAnalysisResult { get; private set; } = new ChessAnalysisResult();
-		public List<AnalysisLogEntry> AnalysisLog { get; private set; } = new List<AnalysisLogEntry>();
 
 		public bool IsEngineRunning
 		{
@@ -445,7 +416,6 @@ namespace GPTDeepResearch
 			sb.AppendLine("StockfishBridge {");
 			sb.AppendLine($"  EngineRunning:      {IsEngineRunning}");
 			sb.AppendLine($"  IsReady:            {IsReady}");
-			sb.AppendLine($"  AnalysisLogSize:    {AnalysisLog.Count}");
 			sb.AppendLine($"  LastAnalysis:       {(!string.IsNullOrEmpty(LastAnalysisResult.bestMove) ? LastAnalysisResult.bestMove : "None")}");
 			sb.AppendLine($"  Config:             Depth:{defaultDepth}, Elo:{defaultElo}, Skill:{defaultSkillLevel}");
 			sb.Append("}");
@@ -673,9 +643,6 @@ namespace GPTDeepResearch
 			LastAnalysisResult.analysisTimeMs = (Time.time - startTime) * 1000f;
 			ParseAnalysisResult(LastRawOutput, actualSearchDepth, enableEvaluation ? actualEvalDepth : -1);
 
-			// Add to analysis log
-			AddToAnalysisLog(fen, LastAnalysisResult.bestMove, LastAnalysisResult.centipawnEvaluation,
-							LastAnalysisResult.analysisTimeMs, actualSearchDepth);
 
 			// Fire completion event
 			OnAnalysisComplete?.Invoke(LastAnalysisResult);
@@ -684,72 +651,6 @@ namespace GPTDeepResearch
 			{
 				UnityEngine.Debug.Log($"<color=green>[Stockfish] Analysis completed in {LastAnalysisResult.analysisTimeMs:F1}ms</color>");
 			}
-		}
-
-		#endregion
-
-		#region Public API - Logging and Export
-
-		/// <summary>
-		/// Add entry to analysis log for debugging and export
-		/// </summary>
-		private void AddToAnalysisLog(string fen, string bestMove, float evaluation, float analysisTime, int depth)
-		{
-			var entry = new AnalysisLogEntry(fen, bestMove, evaluation, analysisTime, depth);
-			AnalysisLog.Add(entry);
-
-			// Limit log size to prevent memory issues
-			const int maxLogSize = 1000;
-			if (AnalysisLog.Count > maxLogSize)
-			{
-				AnalysisLog.RemoveAt(0);
-			}
-
-			if (enableDebugLogging)
-			{
-				UnityEngine.Debug.Log($"<color=cyan>[StockfishBridge] Logged analysis: {entry}</color>");
-			}
-		}
-
-		/// <summary>
-		/// Clear analysis log
-		/// </summary>
-		public void ClearAnalysisLog()
-		{
-			AnalysisLog.Clear();
-
-			if (enableDebugLogging)
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] Analysis log cleared</color>");
-			}
-		}
-
-		/// <summary>
-		/// Export analysis log as formatted string for debugging or PGN generation
-		/// </summary>
-		public string ExportAnalysisLog()
-		{
-			if (AnalysisLog.Count == 0)
-				return "No analysis data available";
-
-			var sb = new StringBuilder();
-			sb.AppendLine("StockfishBridge Analysis Log");
-			sb.AppendLine("===========================");
-			sb.AppendLine($"Total Analyses: {AnalysisLog.Count}");
-			sb.AppendLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-			sb.AppendLine();
-
-			foreach (var entry in AnalysisLog)
-			{
-				sb.AppendLine($"Position: {entry.fen}");
-				sb.AppendLine($"Best Move: {entry.bestMove}");
-				sb.AppendLine($"Evaluation: {entry.evaluation:F2}cp");
-				sb.AppendLine($"Depth: {entry.depth}, Time: {entry.analysisTimeMs:F1}ms");
-				sb.AppendLine($"Timestamp: {entry.timestamp:HH:mm:ss}");
-				sb.AppendLine();
-			}
-
-			return sb.ToString();
 		}
 
 		#endregion
@@ -1910,51 +1811,6 @@ namespace GPTDeepResearch
 		}
 
 		/// <summary>
-		/// Test analysis logging functionality
-		/// </summary>
-		private void TestAnalysisLogging()
-		{
-			UnityEngine.Debug.Log("<color=cyan>[StockfishBridge] Testing analysis logging...</color>");
-
-			ClearAnalysisLog();
-
-			// Add test entries
-			AddToAnalysisLog("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "e2e4", 25f, 1500f, 12);
-			AddToAnalysisLog("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2", "Nf3", -15f, 1200f, 10);
-
-			if (AnalysisLog.Count == 2)
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Analysis log entries added correctly</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Analysis log count incorrect</color>");
-			}
-
-			// Test export
-			string exportedLog = ExportAnalysisLog();
-			if (exportedLog.Contains("Total Analyses: 2"))
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Analysis log export successful</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Analysis log export failed</color>");
-			}
-
-			// Test clear
-			ClearAnalysisLog();
-			if (AnalysisLog.Count == 0)
-			{
-				UnityEngine.Debug.Log("<color=green>[StockfishBridge] ✓ Analysis log cleared successfully</color>");
-			}
-			else
-			{
-				UnityEngine.Debug.Log("<color=red>[StockfishBridge] ✗ Analysis log clear failed</color>");
-			}
-		}
-
-		/// <summary>
 		/// Test comprehensive position analysis
 		/// </summary>
 		private IEnumerator TestPositionAnalysis()
@@ -1996,7 +1852,6 @@ namespace GPTDeepResearch
 			TestFENBasedAnalysis();
 			TestEngineRestart();
 			TestFENValidation();
-			TestAnalysisLogging();
 
 			// Start coroutine tests
 			StartCoroutine(RunCoroutineTests());
